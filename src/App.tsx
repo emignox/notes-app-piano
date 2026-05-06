@@ -35,6 +35,7 @@ export default function App() {
         suppressMic(2500);
       } else {
         playError();
+        suppressMic(900); // grace period before next card accepts mic input
       }
       recordAnswer(correct);
     },
@@ -243,6 +244,7 @@ export default function App() {
               confirmedNote={confirmedNote}
               onAnswer={handleAnswer}
               onPlayNote={handlePlayNote}
+              suppressMic={suppressMic}
             />
           </div>
         )}

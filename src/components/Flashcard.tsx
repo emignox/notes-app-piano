@@ -20,6 +20,7 @@ interface FlashcardProps {
   confirmedNote: { note: LiveNote; id: number } | null;
   onAnswer: (correct: boolean) => void;
   onPlayNote: (toneNote: string) => void;
+  suppressMic: (ms?: number) => void;
 }
 
 function normalizeAnswer(answer: string): string {
@@ -55,7 +56,7 @@ function toItalian(name: string): string {
 export function Flashcard({
   note, allNotes, sessionIndex, sessionTotal, results, streak,
   micActive, liveNote, confirmedNote,
-  onAnswer, onPlayNote,
+  onAnswer, onPlayNote, suppressMic,
 }: FlashcardProps) {
   const [answerState, setAnswerState] = useState<AnswerState>('idle');
   const [pressedNote, setPressedNote] = useState<string | null>(null);
@@ -68,10 +69,14 @@ export function Flashcard({
   const onPlayNoteRef = useRef(onPlayNote);
   useEffect(() => { onPlayNoteRef.current = onPlayNote; });
 
-  // Reset on new card
+  const suppressMicRef = useRef(suppressMic);
+  useEffect(() => { suppressMicRef.current = suppressMic; });
+
+  // Reset on new card + grace period so residual sound doesn't auto-answer
   useEffect(() => {
     setAnswerState('idle');
     setPressedNote(null);
+    suppressMicRef.current(500);
   }, [sessionIndex]);
 
   // Auto-play — disabled when mic is active to avoid feedback loop

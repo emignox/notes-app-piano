@@ -5,14 +5,13 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 
 function freqToNote(freq: number): { name: string; octave: number } | null {
   if (!freq || freq < 27.5 || freq > 4200) return null;
-  // Convert frequency to MIDI note number
   const midi = Math.round(12 * Math.log2(freq / 440) + 69);
-  if (midi < 21 || midi > 108) return null; // piano range A0–C8
+  if (midi < 21 || midi > 108) return null;
   return { name: NOTE_NAMES[midi % 12], octave: Math.floor(midi / 12) - 1 };
 }
 
 export interface LiveNote {
-  name: string;   // e.g. "C", "F#"
+  name: string;
   octave: number;
   clarity: number;
 }
@@ -21,7 +20,6 @@ export function usePitchDetection() {
   const [isListening, setIsListening] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [liveNote, setLiveNote] = useState<LiveNote | null>(null);
-  // confirmedNote fires only when a stable note is held for ~80ms (not on every frame)
   const [confirmedNote, setConfirmedNote] = useState<{ note: LiveNote; id: number } | null>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -33,10 +31,20 @@ export function usePitchDetection() {
   const lastNoteKeyRef = useRef<string>('');
   const stableFramesRef = useRef(0);
   const cooldownRef = useRef(false);
+  // Single timer ref — suppress() clears this before setting a new one,
+  // so it always wins over any shorter internal cooldown.
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const STABILITY_FRAMES = 5;  // ~83ms at 60fps before confirming
-  const COOLDOWN_MS = 900;      // wait before accepting same note again
-  const CLARITY_THRESHOLD = 0.92;
+  const STABILITY_FRAMES = 7;    // ~116ms at 60fps — more stable, fewer false triggers
+  const COOLDOWN_MS = 1400;      // internal cooldown after confirming a note
+  const CLARITY_THRESHOLD = 0.93;
+
+  const clearCooldownTimer = useCallback(() => {
+    if (cooldownTimerRef.current !== null) {
+      clearTimeout(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
+    }
+  }, []);
 
   const stop = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -44,12 +52,13 @@ export function usePitchDetection() {
     streamRef.current = null;
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
+    clearCooldownTimer();
     setIsListening(false);
     setLiveNote(null);
     lastNoteKeyRef.current = '';
     stableFramesRef.current = 0;
     cooldownRef.current = false;
-  }, []);
+  }, [clearCooldownTimer]);
 
   const start = useCallback(async () => {
     if (isListening) return;
@@ -69,6 +78,14 @@ export function usePitchDetection() {
 
       const detector = PitchDetector.forFloat32Array(analyser.fftSize);
       const input = new Float32Array(detector.inputLength);
+
+      // Grace period on mic start — ignore first 300ms to avoid startup noise
+      cooldownRef.current = true;
+      clearCooldownTimer();
+      cooldownTimerRef.current = setTimeout(() => {
+        cooldownRef.current = false;
+        cooldownTimerRef.current = null;
+      }, 300);
 
       setIsListening(true);
       setPermissionDenied(false);
@@ -91,12 +108,17 @@ export function usePitchDetection() {
             }
 
             if (stableFramesRef.current >= STABILITY_FRAMES && !cooldownRef.current) {
+              // Confirm the note and start cooldown — clear any previous timer first
+              clearCooldownTimer();
               cooldownRef.current = true;
               stableFramesRef.current = 0;
               lastNoteKeyRef.current = '';
+              cooldownTimerRef.current = setTimeout(() => {
+                cooldownRef.current = false;
+                cooldownTimerRef.current = null;
+              }, COOLDOWN_MS);
               const id = ++confirmIdRef.current;
               setConfirmedNote({ note: { ...note, clarity }, id });
-              setTimeout(() => { cooldownRef.current = false; }, COOLDOWN_MS);
             }
           }
         } else if (clarity < 0.5) {
@@ -112,21 +134,26 @@ export function usePitchDetection() {
     } catch {
       setPermissionDenied(true);
     }
-  }, [isListening]);
+  }, [isListening, clearCooldownTimer]);
 
-  // Temporarily block mic detection (e.g. after playing a note through the speaker)
+  // Suppress always wins — clears any existing timer before starting its own
   const suppress = useCallback((ms = 2000) => {
+    clearCooldownTimer();
     cooldownRef.current = true;
     stableFramesRef.current = 0;
     lastNoteKeyRef.current = '';
-    setTimeout(() => { cooldownRef.current = false; }, ms);
-  }, []);
+    cooldownTimerRef.current = setTimeout(() => {
+      cooldownRef.current = false;
+      cooldownTimerRef.current = null;
+    }, ms);
+  }, [clearCooldownTimer]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     audioCtxRef.current?.close();
-  }, []);
+    clearCooldownTimer();
+  }, [clearCooldownTimer]);
 
   return { isListening, permissionDenied, liveNote, confirmedNote, start, stop, suppress };
 }
