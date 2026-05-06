@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <linearGradient id="noteGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+
+  <!-- Subtle inner glow -->
+  <rect width="512" height="512" rx="100" fill="none" stroke="#4338ca" stroke-width="3" opacity="0.4"/>
+
+  <!-- ── Piano keyboard ── -->
+  <!-- 7 white keys, each 46px wide, 5px gap → total = 7×46 + 6×5 = 322+30 = 352px -->
+  <!-- Center: start x = (512-352)/2 = 80, y = 270, height = 170 -->
+
+  <!-- White keys -->
+  <rect x="80"  y="268" width="46" height="170" rx="7" fill="#f8fafc"/>
+  <rect x="131" y="268" width="46" height="170" rx="7" fill="#f1f5f9"/>
+  <rect x="182" y="268" width="46" height="170" rx="7" fill="#f8fafc"/>
+  <rect x="233" y="268" width="46" height="170" rx="7" fill="#f1f5f9"/>
+  <rect x="284" y="268" width="46" height="170" rx="7" fill="#f8fafc"/>
+  <rect x="335" y="268" width="46" height="170" rx="7" fill="#f1f5f9"/>
+  <rect x="386" y="268" width="46" height="170" rx="7" fill="#f8fafc"/>
+
+  <!-- Gaps between white keys (dark lines) -->
+  <rect x="127" y="268" width="4"  height="170" rx="0" fill="#0f172a"/>
+  <rect x="178" y="268" width="4"  height="170" rx="0" fill="#0f172a"/>
+  <rect x="229" y="268" width="4"  height="170" rx="0" fill="#0f172a"/>
+  <rect x="280" y="268" width="4"  height="170" rx="0" fill="#0f172a"/>
+  <rect x="331" y="268" width="4"  height="170" rx="0" fill="#0f172a"/>
+  <rect x="382" y="268" width="4"  height="170" rx="0" fill="#0f172a"/>
+
+  <!-- Black keys (C# D# F# G# A#) -->
+  <!-- C#: between key1 and key2, centered → x = 80+46 - 16 = 110 -->
+  <rect x="110" y="268" width="32" height="108" rx="5" fill="#1e293b"/>
+  <!-- D#: between key2 and key3 → x = 131+46 - 16 = 161 -->
+  <rect x="161" y="268" width="32" height="108" rx="5" fill="#1e293b"/>
+  <!-- F#: between key4 and key5 → x = 233+46 - 16 = 263 -->
+  <rect x="263" y="268" width="32" height="108" rx="5" fill="#1e293b"/>
+  <!-- G#: between key5 and key6 → x = 284+46 - 16 = 314 -->
+  <rect x="314" y="268" width="32" height="108" rx="5" fill="#1e293b"/>
+  <!-- A#: between key6 and key7 → x = 335+46 - 16 = 365 -->
+  <rect x="365" y="268" width="32" height="108" rx="5" fill="#1e293b"/>
+
+  <!-- Keyboard top border -->
+  <rect x="78" y="264" width="358" height="10" rx="5" fill="#334155"/>
+
+  <!-- ── Music note ── -->
+  <!-- Note head (filled ellipse) -->
+  <ellipse cx="198" cy="168" rx="30" ry="22" fill="url(#noteGrad)" transform="rotate(-15 198 168)"/>
+  <!-- Note stem -->
+  <rect x="225" y="78" width="12" height="100" rx="6" fill="url(#noteGrad)"/>
+  <!-- Note flag (eighth note) -->
+  <path d="M237 78 Q290 105 270 148" stroke="url(#noteGrad)" stroke-width="12" fill="none" stroke-linecap="round"/>
+
+  <!-- Second note (smaller, offset right) -->
+  <ellipse cx="320" cy="148" rx="24" ry="17" fill="#a5b4fc" opacity="0.7" transform="rotate(-15 320 148)"/>
+  <rect x="343" y="68" width="10" height="88" rx="5" fill="#a5b4fc" opacity="0.7"/>
+
+  <!-- Subtle shine at top-left -->
+  <ellipse cx="140" cy="100" rx="80" ry="50" fill="white" opacity="0.03"/>
+</svg>
