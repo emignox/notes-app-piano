@@ -85,6 +85,7 @@ export function Flashcard({
     setPressedNote(null);
     suppressMicRef.current(1500);
     cardStartIdRef.current = confirmedNoteRef.current?.id ?? 0;
+    suppressMicRef.current(300); // tiny gap for card transition, seenSilenceRef handles echo
   }, [sessionIndex]);
 
   // Auto-play — disabled when mic is active to avoid feedback loop

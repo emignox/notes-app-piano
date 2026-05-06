@@ -36,10 +36,10 @@ export function usePitchDetection() {
   // This prevents any residual piano resonance from firing after suppress expires.
   const seenSilenceRef = useRef(true);
 
-  const STABILITY_FRAMES = 10;
-  const COOLDOWN_MS = 2000;
-  const CLARITY_THRESHOLD = 0.95;
-  const MIN_RMS = 0.015;
+  const STABILITY_FRAMES = 4;    // ~67ms — fast response, seenSilenceRef prevents false fires
+  const COOLDOWN_MS = 1200;
+  const CLARITY_THRESHOLD = 0.92;
+  const MIN_RMS = 0.012;
 
   // Set cooldown only if it extends the current expiry. Always safe to call.
   const setCooldown = useCallback((ms: number) => {

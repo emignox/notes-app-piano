@@ -32,10 +32,11 @@ export default function App() {
     (correct: boolean) => {
       if (correct) {
         playNote(state.currentSession[state.currentIndex]?.toneNote ?? 'C4');
-        suppressMic(3500); // covers note decay + card transition + new card grace
+        // seenSilenceRef handles echo — timer only covers the card transition
+        suppressMic(700);
       } else {
         playError();
-        suppressMic(1500);
+        suppressMic(400);
       }
       recordAnswer(correct);
     },
@@ -44,17 +45,16 @@ export default function App() {
 
   const handlePlayNote = useCallback((toneNote: string) => {
     playNote(toneNote);
-    suppressMic(3000);
+    suppressMic(2000); // speaker feedback prevention
   }, [playNote, suppressMic]);
 
-  // Suppress mic during level transitions — piano note from last session may still ring
   const handleAdvanceLevel = useCallback(() => {
-    suppressMic(3000);
+    suppressMic(800);
     advanceLevel();
   }, [suppressMic, advanceLevel]);
 
   const handleDismissIntro = useCallback(() => {
-    suppressMic(2000);
+    suppressMic(800);
     dismissIntro();
   }, [suppressMic, dismissIntro]);
 
