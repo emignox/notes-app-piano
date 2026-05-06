@@ -74,18 +74,17 @@ export default function App() {
               </div>
             )}
 
-            {/* Mic toggle — global */}
+            {/* Mic toggle — global, always shows text */}
             <button
               onClick={toggleMic}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-xs font-medium ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-bold ${
                 isListening
-                  ? 'bg-indigo-600 border-indigo-400 text-white'
-                  : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:border-indigo-500'
+                  ? 'bg-indigo-600 border-indigo-400 text-white shadow-md shadow-indigo-900/50'
+                  : 'bg-slate-700/60 border-slate-500 text-slate-200 hover:border-indigo-400 hover:text-indigo-300'
               }`}
-              title={isListening ? 'Disattiva microfono' : 'Attiva microfono piano'}
             >
-              {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{isListening ? 'Mic ON' : 'Mic'}</span>
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isListening ? 'Mic ON' : 'Mic'}
             </button>
 
             {/* Audio button */}
