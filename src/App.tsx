@@ -6,14 +6,16 @@ import { usePitchDetection } from './hooks/usePitchDetection';
 import { ProgressBar } from './components/ProgressBar';
 import { LevelIntro } from './components/LevelIntro';
 import { Flashcard } from './components/Flashcard';
+import { MelodyMode } from './components/MelodyMode';
 import { curriculum } from './data/curriculum';
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(true);
   const [audioStarted, setAudioStarted] = useState(false);
+  const [appMode, setAppMode] = useState<'learn' | 'melody'>('learn');
 
   const { state, currentNote, sessionComplete, dismissIntro, recordAnswer, advanceLevel, resetProgress } = useLearning();
-  const { isLoading, initialize, playNote, playError } = useAudio();
+  const { isLoading, initialize, playNote, playError, playMelody } = useAudio();
 
   // Global mic — persists across sessions and level changes
   const { isListening, permissionDenied, liveNote, confirmedNote, start: startMic, stop: stopMic, suppress: suppressMic } = usePitchDetection();
@@ -130,8 +132,32 @@ export default function App() {
       <main className="max-w-2xl mx-auto px-3 py-3 sm:py-5 space-y-3">
         <ProgressBar currentLevel={state.currentLevel} learnedNoteNames={learnedNoteNames} />
 
+        {/* Canzoncine button */}
+        {appMode === 'learn' && (
+          <button
+            onClick={() => setAppMode('melody')}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-900/50 hover:bg-indigo-800/60 border border-indigo-500/40 hover:border-indigo-400/60 text-indigo-300 hover:text-indigo-200 font-semibold text-sm transition-all"
+          >
+            <span>🎵</span>
+            Canzoncine
+          </button>
+        )}
+
+        {/* Melody mode */}
+        {appMode === 'melody' && (
+          <div className={`rounded-2xl border ${cardBg} p-3 sm:p-4`}>
+            <MelodyMode
+              learnedToneNotes={state.learnedNotes.map(n => n.toneNote)}
+              playMelody={playMelody}
+              suppressMic={suppressMic}
+              onPlayNote={handlePlayNote}
+              onBack={() => setAppMode('learn')}
+            />
+          </div>
+        )}
+
         {/* Level intro */}
-        {state.showIntro && state.learnedNotes.length > 0 && (
+        {appMode === 'learn' && state.showIntro && state.learnedNotes.length > 0 && (
           <div className={`rounded-2xl border ${cardBg} p-2`}>
             <LevelIntro
               note={state.learnedNotes[state.learnedNotes.length - 1]}
@@ -143,7 +169,7 @@ export default function App() {
         )}
 
         {/* Session complete */}
-        {sessionComplete && !state.showIntro && (
+        {appMode === 'learn' && sessionComplete && !state.showIntro && (
           <div className="rounded-2xl border border-indigo-500/50 bg-gradient-to-b from-indigo-900/40 to-slate-900/60 p-6 text-center space-y-4">
             <div className="text-5xl">{scorePercent === 100 ? '🏆' : scorePercent >= 70 ? '🎹' : '💪'}</div>
             <h2 className="text-2xl font-bold text-white">
@@ -196,14 +222,14 @@ export default function App() {
         )}
 
         {/* Mic permission denied warning */}
-        {permissionDenied && (
+        {appMode === 'learn' && permissionDenied && (
           <div className="rounded-xl bg-red-900/30 border border-red-500/40 px-4 py-2.5 text-sm text-red-300 text-center">
             Microfono negato — controlla i permessi del browser
           </div>
         )}
 
         {/* Flashcard quiz */}
-        {!state.showIntro && !sessionComplete && currentNote && (
+        {appMode === 'learn' && !state.showIntro && !sessionComplete && currentNote && (
           <div className={`rounded-2xl border ${cardBg} p-3 sm:p-4`}>
             <Flashcard
               note={currentNote}

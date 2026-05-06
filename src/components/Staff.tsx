@@ -7,6 +7,7 @@ interface StaffProps {
   currentIndex: number;
   results: NoteResult[];
   currentAnswerState: AnswerState;
+  durations?: string[];  // per-note VexFlow durations
 }
 
 const NOTE_WIDTH = 68;
@@ -37,8 +38,8 @@ function noteColor(
   return '#94a3b830'; // ghost for upcoming
 }
 
-function buildStaveNote(entry: NoteEntry, color: string): StaveNote {
-  const sn = new StaveNote({ keys: [entry.vexflowKey], duration: 'q', clef: entry.clef });
+function buildStaveNote(entry: NoteEntry, color: string, duration = 'q'): StaveNote {
+  const sn = new StaveNote({ keys: [entry.vexflowKey], duration, clef: entry.clef });
   if (entry.accidental) {
     const sym = entry.accidental === 'sharp' ? '#' : entry.accidental === 'flat' ? 'b' : 'n';
     sn.addModifier(new Accidental(sym), 0);
@@ -47,7 +48,7 @@ function buildStaveNote(entry: NoteEntry, color: string): StaveNote {
   return sn;
 }
 
-export function Staff({ notes, currentIndex, results, currentAnswerState }: StaffProps) {
+export function Staff({ notes, currentIndex, results, currentAnswerState, durations }: StaffProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -90,9 +91,12 @@ export function Staff({ notes, currentIndex, results, currentAnswerState }: Staf
       stave.setContext(ctx).draw();
 
       const staveNotes = notes.map((entry, idx) =>
-        buildStaveNote(entry, noteColor(idx, currentIndex, results, currentAnswerState)),
+        buildStaveNote(entry, noteColor(idx, currentIndex, results, currentAnswerState), durations?.[idx] ?? 'q'),
       );
-      const voice = new Voice({ numBeats: notes.length, beatValue: 4 }).setMode(Voice.Mode.SOFT);
+      const totalBeats = durations
+        ? durations.reduce((sum, d) => sum + (d === 'w' ? 4 : d === 'h' ? 2 : d === 'q' ? 1 : 0.5), 0)
+        : notes.length;
+      const voice = new Voice({ numBeats: Math.ceil(totalBeats), beatValue: 4 }).setMode(Voice.Mode.SOFT);
       voice.addTickables(staveNotes);
       new Formatter().joinVoices([voice]).format([voice], width - CLEF_WIDTH - PADDING);
       voice.draw(ctx, stave);
@@ -112,9 +116,15 @@ export function Staff({ notes, currentIndex, results, currentAnswerState }: Staf
       ) => {
         if (entries.length === 0) return;
         const staveNotes = entries.map(({ note, idx }) =>
-          buildStaveNote(note, noteColor(idx, currentIndex, results, currentAnswerState)),
+          buildStaveNote(note, noteColor(idx, currentIndex, results, currentAnswerState), durations?.[idx] ?? 'q'),
         );
-        const voice = new Voice({ numBeats: entries.length, beatValue: 4 }).setMode(Voice.Mode.SOFT);
+        const entryBeats = durations
+          ? entries.reduce((sum, { idx }) => {
+              const d = durations[idx] ?? 'q';
+              return sum + (d === 'w' ? 4 : d === 'h' ? 2 : d === 'q' ? 1 : 0.5);
+            }, 0)
+          : entries.length;
+        const voice = new Voice({ numBeats: Math.ceil(entryBeats), beatValue: 4 }).setMode(Voice.Mode.SOFT);
         voice.addTickables(staveNotes);
         new Formatter().joinVoices([voice]).format([voice], width - CLEF_WIDTH - PADDING);
         voice.draw(ctx, stave);
@@ -125,7 +135,7 @@ export function Staff({ notes, currentIndex, results, currentAnswerState }: Staf
     }
 
     return () => { container.innerHTML = ''; };
-  }, [notes, currentIndex, results, currentAnswerState, isMixed, trebleEntries, bassEntries, totalHeight]);
+  }, [notes, currentIndex, results, currentAnswerState, isMixed, trebleEntries, bassEntries, totalHeight, durations]);
 
   // Auto-scroll to keep active note centred
   useEffect(() => {

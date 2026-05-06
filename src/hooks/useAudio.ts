@@ -65,5 +65,16 @@ export function useAudio() {
     } catch { /* ignore */ }
   }, []);
 
-  return { isLoaded, isLoading, initialize, playNote, playError };
+  const playMelody = useCallback((notes: Array<{ toneNote: string; durationSec: number }>) => {
+    if (!samplerRef.current || !isLoadedRef.current) return;
+    try {
+      let time = Tone.now() + 0.2;
+      for (const { toneNote, durationSec } of notes) {
+        samplerRef.current.triggerAttackRelease(toneNote, durationSec * 0.9, time);
+        time += durationSec;
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  return { isLoaded, isLoading, initialize, playNote, playError, playMelody };
 }

@@ -25,3 +25,22 @@ export interface LearningState {
 }
 
 export type AnswerState = 'idle' | 'correct' | 'wrong';
+
+export interface MelodyNote {
+  toneNote: string;      // e.g. "E4", "C5"
+  vexflowKey: string;    // e.g. "e/4", "c/5"
+  duration: 'w' | 'h' | 'q' | '8';
+  durationSec: number;   // per audio: w=2.0, h=1.0, q=0.5, 8=0.25
+  clef: 'treble' | 'bass';
+  accidental?: 'sharp' | 'flat';
+}
+
+export interface Melody {
+  id: string;
+  title: string;
+  composer: string;
+  difficulty: 'facile' | 'medio' | 'difficile';
+  emoji: string;
+  requiredToneNotes: string[];  // toneNotes che l'utente deve aver imparato
+  notes: MelodyNote[];
+}
