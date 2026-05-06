@@ -31,13 +31,15 @@ export function usePitchDetection() {
   const stableFramesRef = useRef(0);
   const cooldownRef = useRef(false);
   const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track absolute timestamp of when cooldown expires — suppress only extends, never shortens
   const cooldownUntilRef = useRef<number>(0);
+  // Gate: mic won't confirm a note until it has seen silence first.
+  // This prevents any residual piano resonance from firing after suppress expires.
+  const seenSilenceRef = useRef(true);
 
-  const STABILITY_FRAMES = 10;    // ~167ms at 60fps — must hold note cleanly
-  const COOLDOWN_MS = 2000;       // internal cooldown after confirming
-  const CLARITY_THRESHOLD = 0.95; // high: only strong, clear piano tones pass
-  const MIN_RMS = 0.015;          // volume floor — filters out quiet residuals and room noise
+  const STABILITY_FRAMES = 10;
+  const COOLDOWN_MS = 2000;
+  const CLARITY_THRESHOLD = 0.95;
+  const MIN_RMS = 0.015;
 
   // Set cooldown only if it extends the current expiry. Always safe to call.
   const setCooldown = useCallback((ms: number) => {
@@ -69,6 +71,7 @@ export function usePitchDetection() {
     lastNoteKeyRef.current = '';
     stableFramesRef.current = 0;
     cooldownRef.current = false;
+    seenSilenceRef.current = true;
   }, []);
 
   const start = useCallback(async () => {
@@ -105,6 +108,8 @@ export function usePitchDetection() {
         const rms = Math.sqrt(sumSq / input.length);
 
         if (rms < MIN_RMS) {
+          // Silence detected — open the gate for the next note
+          seenSilenceRef.current = true;
           setLiveNote(null);
           stableFramesRef.current = 0;
           lastNoteKeyRef.current = '';
@@ -127,7 +132,9 @@ export function usePitchDetection() {
               stableFramesRef.current = 1;
             }
 
-            if (stableFramesRef.current >= STABILITY_FRAMES && !cooldownRef.current) {
+            // Confirm only if: stable enough + not in cooldown + silence was seen first
+            if (stableFramesRef.current >= STABILITY_FRAMES && !cooldownRef.current && seenSilenceRef.current) {
+              seenSilenceRef.current = false; // require silence again before next note
               setCooldown(COOLDOWN_MS);
               const id = ++confirmIdRef.current;
               setConfirmedNote({ note: { ...note, clarity }, id });
@@ -148,8 +155,10 @@ export function usePitchDetection() {
     }
   }, [isListening, setCooldown]);
 
-  // suppress() always extends — never shortens an existing cooldown
+  // suppress() always extends — never shortens an existing cooldown.
+  // Also closes the silence gate so the next note requires a fresh silence first.
   const suppress = useCallback((ms = 3000) => {
+    seenSilenceRef.current = false;
     setCooldown(ms);
   }, [setCooldown]);
 

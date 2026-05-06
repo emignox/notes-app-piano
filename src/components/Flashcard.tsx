@@ -72,11 +72,19 @@ export function Flashcard({
   const suppressMicRef = useRef(suppressMic);
   useEffect(() => { suppressMicRef.current = suppressMic; });
 
-  // Reset on new card + grace period so residual sound doesn't auto-answer
+  // Track confirmedNote ref so we can read its id without adding it as a dep
+  const confirmedNoteRef = useRef(confirmedNote);
+  useEffect(() => { confirmedNoteRef.current = confirmedNote; });
+
+  // Any confirmedNote with id <= this was set before the current card appeared — ignore it
+  const cardStartIdRef = useRef(0);
+
+  // Reset on new card: snapshot the current confirmedNote id so stale detections are ignored
   useEffect(() => {
     setAnswerState('idle');
     setPressedNote(null);
-    suppressMicRef.current(500);
+    suppressMicRef.current(1500);
+    cardStartIdRef.current = confirmedNoteRef.current?.id ?? 0;
   }, [sessionIndex]);
 
   // Auto-play — disabled when mic is active to avoid feedback loop
@@ -102,9 +110,10 @@ export function Flashcard({
     onAnswer(false);
   }, [onAnswer]);
 
-  // React to confirmed mic detections
+  // React to confirmed mic detections — only if the note was confirmed AFTER this card appeared
   useEffect(() => {
     if (!micActive || !confirmedNote || answerState !== 'idle') return;
+    if (confirmedNote.id <= cardStartIdRef.current) return; // stale detection from previous card
     handleAnswer(confirmedNote.note.name);
   }, [confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
