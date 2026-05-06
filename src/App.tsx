@@ -16,7 +16,7 @@ export default function App() {
   const { isLoading, initialize, playNote, playError } = useAudio();
 
   // Global mic — persists across sessions and level changes
-  const { isListening, permissionDenied, liveNote, confirmedNote, start: startMic, stop: stopMic } = usePitchDetection();
+  const { isListening, permissionDenied, liveNote, confirmedNote, start: startMic, stop: stopMic, suppress: suppressMic } = usePitchDetection();
   const toggleMic = useCallback(async () => {
     if (isListening) stopMic(); else await startMic();
   }, [isListening, startMic, stopMic]);
@@ -28,14 +28,21 @@ export default function App() {
 
   const handleAnswer = useCallback(
     (correct: boolean) => {
-      if (correct) playNote(state.currentSession[state.currentIndex]?.toneNote ?? 'C4');
-      else playError();
+      if (correct) {
+        playNote(state.currentSession[state.currentIndex]?.toneNote ?? 'C4');
+        suppressMic(2500);
+      } else {
+        playError();
+      }
       recordAnswer(correct);
     },
-    [playNote, playError, recordAnswer, state.currentSession, state.currentIndex]
+    [playNote, playError, suppressMic, recordAnswer, state.currentSession, state.currentIndex]
   );
 
-  const handlePlayNote = useCallback((toneNote: string) => playNote(toneNote), [playNote]);
+  const handlePlayNote = useCallback((toneNote: string) => {
+    playNote(toneNote);
+    suppressMic(2500); // block mic for 2.5s after playing to avoid feedback loop
+  }, [playNote, suppressMic]);
 
   const learnedNoteNames = state.learnedNotes.map(n => `${n.displayName} (${n.englishName})`);
   const scorePercent = state.currentSession.length > 0

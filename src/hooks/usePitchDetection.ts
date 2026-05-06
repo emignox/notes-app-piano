@@ -114,11 +114,19 @@ export function usePitchDetection() {
     }
   }, [isListening]);
 
+  // Temporarily block mic detection (e.g. after playing a note through the speaker)
+  const suppress = useCallback((ms = 2000) => {
+    cooldownRef.current = true;
+    stableFramesRef.current = 0;
+    lastNoteKeyRef.current = '';
+    setTimeout(() => { cooldownRef.current = false; }, ms);
+  }, []);
+
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     audioCtxRef.current?.close();
   }, []);
 
-  return { isListening, permissionDenied, liveNote, confirmedNote, start, stop };
+  return { isListening, permissionDenied, liveNote, confirmedNote, start, stop, suppress };
 }
