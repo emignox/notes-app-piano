@@ -32,10 +32,10 @@ export default function App() {
     (correct: boolean) => {
       if (correct) {
         playNote(state.currentSession[state.currentIndex]?.toneNote ?? 'C4');
-        suppressMic(2500);
+        suppressMic(3500); // covers note decay + card transition + new card grace
       } else {
         playError();
-        suppressMic(900); // grace period before next card accepts mic input
+        suppressMic(1500);
       }
       recordAnswer(correct);
     },
@@ -44,8 +44,19 @@ export default function App() {
 
   const handlePlayNote = useCallback((toneNote: string) => {
     playNote(toneNote);
-    suppressMic(2500); // block mic for 2.5s after playing to avoid feedback loop
+    suppressMic(3000);
   }, [playNote, suppressMic]);
+
+  // Suppress mic during level transitions — piano note from last session may still ring
+  const handleAdvanceLevel = useCallback(() => {
+    suppressMic(3000);
+    advanceLevel();
+  }, [suppressMic, advanceLevel]);
+
+  const handleDismissIntro = useCallback(() => {
+    suppressMic(2000);
+    dismissIntro();
+  }, [suppressMic, dismissIntro]);
 
   const learnedNoteNames = state.learnedNotes.map(n => `${n.displayName} (${n.englishName})`);
   const scorePercent = state.currentSession.length > 0
@@ -164,7 +175,7 @@ export default function App() {
               note={state.learnedNotes[state.learnedNotes.length - 1]}
               levelNumber={state.currentLevel}
               onListen={() => playNote(state.learnedNotes[state.learnedNotes.length - 1].toneNote)}
-              onStart={dismissIntro}
+              onStart={handleDismissIntro}
             />
           </div>
         )}
@@ -201,7 +212,7 @@ export default function App() {
             </div>
             <div className="flex gap-3 justify-center flex-wrap pt-1">
               <button
-                onClick={dismissIntro}
+                onClick={handleDismissIntro}
                 className="flex items-center gap-2 px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold transition-all"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -209,7 +220,7 @@ export default function App() {
               </button>
               {!isLastLevel ? (
                 <button
-                  onClick={advanceLevel}
+                  onClick={handleAdvanceLevel}
                   className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-900/50"
                 >
                   Nota successiva

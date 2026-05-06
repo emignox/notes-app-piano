@@ -27,23 +27,32 @@ export function usePitchDetection() {
   const rafRef = useRef<number>(0);
   const confirmIdRef = useRef(0);
 
-  // Stability state
   const lastNoteKeyRef = useRef<string>('');
   const stableFramesRef = useRef(0);
   const cooldownRef = useRef(false);
-  // Single timer ref — suppress() clears this before setting a new one,
-  // so it always wins over any shorter internal cooldown.
   const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track absolute timestamp of when cooldown expires — suppress only extends, never shortens
+  const cooldownUntilRef = useRef<number>(0);
 
-  const STABILITY_FRAMES = 7;    // ~116ms at 60fps — more stable, fewer false triggers
-  const COOLDOWN_MS = 1400;      // internal cooldown after confirming a note
-  const CLARITY_THRESHOLD = 0.93;
+  const STABILITY_FRAMES = 10;    // ~167ms at 60fps — must hold note cleanly
+  const COOLDOWN_MS = 2000;       // internal cooldown after confirming
+  const CLARITY_THRESHOLD = 0.95; // high: only strong, clear piano tones pass
+  const MIN_RMS = 0.015;          // volume floor — filters out quiet residuals and room noise
 
-  const clearCooldownTimer = useCallback(() => {
-    if (cooldownTimerRef.current !== null) {
-      clearTimeout(cooldownTimerRef.current);
+  // Set cooldown only if it extends the current expiry. Always safe to call.
+  const setCooldown = useCallback((ms: number) => {
+    const until = Date.now() + ms;
+    if (until <= cooldownUntilRef.current) return; // already covered by a longer suppress
+    if (cooldownTimerRef.current !== null) clearTimeout(cooldownTimerRef.current);
+    cooldownRef.current = true;
+    stableFramesRef.current = 0;
+    lastNoteKeyRef.current = '';
+    cooldownUntilRef.current = until;
+    cooldownTimerRef.current = setTimeout(() => {
+      cooldownRef.current = false;
       cooldownTimerRef.current = null;
-    }
+      cooldownUntilRef.current = 0;
+    }, ms);
   }, []);
 
   const stop = useCallback(() => {
@@ -52,13 +61,15 @@ export function usePitchDetection() {
     streamRef.current = null;
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
-    clearCooldownTimer();
+    if (cooldownTimerRef.current !== null) clearTimeout(cooldownTimerRef.current);
+    cooldownTimerRef.current = null;
+    cooldownUntilRef.current = 0;
     setIsListening(false);
     setLiveNote(null);
     lastNoteKeyRef.current = '';
     stableFramesRef.current = 0;
     cooldownRef.current = false;
-  }, [clearCooldownTimer]);
+  }, []);
 
   const start = useCallback(async () => {
     if (isListening) return;
@@ -79,19 +90,28 @@ export function usePitchDetection() {
       const detector = PitchDetector.forFloat32Array(analyser.fftSize);
       const input = new Float32Array(detector.inputLength);
 
-      // Grace period on mic start — ignore first 300ms to avoid startup noise
-      cooldownRef.current = true;
-      clearCooldownTimer();
-      cooldownTimerRef.current = setTimeout(() => {
-        cooldownRef.current = false;
-        cooldownTimerRef.current = null;
-      }, 300);
-
       setIsListening(true);
       setPermissionDenied(false);
 
+      // Startup grace period
+      setCooldown(500);
+
       function tick() {
         analyser.getFloatTimeDomainData(input);
+
+        // RMS volume check — ignore quiet sounds (residuals, room noise, decayed notes)
+        let sumSq = 0;
+        for (let i = 0; i < input.length; i++) sumSq += input[i] * input[i];
+        const rms = Math.sqrt(sumSq / input.length);
+
+        if (rms < MIN_RMS) {
+          setLiveNote(null);
+          stableFramesRef.current = 0;
+          lastNoteKeyRef.current = '';
+          rafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+
         const [pitch, clarity] = detector.findPitch(input, audioCtx.sampleRate);
 
         if (clarity >= CLARITY_THRESHOLD && pitch > 50) {
@@ -108,15 +128,7 @@ export function usePitchDetection() {
             }
 
             if (stableFramesRef.current >= STABILITY_FRAMES && !cooldownRef.current) {
-              // Confirm the note and start cooldown — clear any previous timer first
-              clearCooldownTimer();
-              cooldownRef.current = true;
-              stableFramesRef.current = 0;
-              lastNoteKeyRef.current = '';
-              cooldownTimerRef.current = setTimeout(() => {
-                cooldownRef.current = false;
-                cooldownTimerRef.current = null;
-              }, COOLDOWN_MS);
+              setCooldown(COOLDOWN_MS);
               const id = ++confirmIdRef.current;
               setConfirmedNote({ note: { ...note, clarity }, id });
             }
@@ -134,26 +146,19 @@ export function usePitchDetection() {
     } catch {
       setPermissionDenied(true);
     }
-  }, [isListening, clearCooldownTimer]);
+  }, [isListening, setCooldown]);
 
-  // Suppress always wins — clears any existing timer before starting its own
-  const suppress = useCallback((ms = 2000) => {
-    clearCooldownTimer();
-    cooldownRef.current = true;
-    stableFramesRef.current = 0;
-    lastNoteKeyRef.current = '';
-    cooldownTimerRef.current = setTimeout(() => {
-      cooldownRef.current = false;
-      cooldownTimerRef.current = null;
-    }, ms);
-  }, [clearCooldownTimer]);
+  // suppress() always extends — never shortens an existing cooldown
+  const suppress = useCallback((ms = 3000) => {
+    setCooldown(ms);
+  }, [setCooldown]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     audioCtxRef.current?.close();
-    clearCooldownTimer();
-  }, [clearCooldownTimer]);
+    if (cooldownTimerRef.current !== null) clearTimeout(cooldownTimerRef.current);
+  }, []);
 
   return { isListening, permissionDenied, liveNote, confirmedNote, start, stop, suppress };
 }
