@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import { Music, RotateCcw, ChevronRight, Sun, Moon, Loader2, Volume2, Flame } from 'lucide-react';
+import { Music, RotateCcw, ChevronRight, Sun, Moon, Loader2, Volume2, Flame, Mic, MicOff } from 'lucide-react';
 import { useLearning } from './hooks/useLearning';
 import { useAudio } from './hooks/useAudio';
+import { usePitchDetection } from './hooks/usePitchDetection';
 import { ProgressBar } from './components/ProgressBar';
 import { LevelIntro } from './components/LevelIntro';
 import { Flashcard } from './components/Flashcard';
@@ -13,6 +14,12 @@ export default function App() {
 
   const { state, currentNote, sessionComplete, dismissIntro, recordAnswer, advanceLevel, resetProgress } = useLearning();
   const { isLoading, initialize, playNote, playError } = useAudio();
+
+  // Global mic — persists across sessions and level changes
+  const { isListening, permissionDenied, liveNote, confirmedNote, start: startMic, stop: stopMic } = usePitchDetection();
+  const toggleMic = useCallback(async () => {
+    if (isListening) stopMic(); else await startMic();
+  }, [isListening, startMic, stopMic]);
 
   const handleStartAudio = useCallback(async () => {
     await initialize();
@@ -60,7 +67,21 @@ export default function App() {
               </div>
             )}
 
-            {/* Audio button — always visible in some form */}
+            {/* Mic toggle — global */}
+            <button
+              onClick={toggleMic}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border transition-all text-xs font-medium ${
+                isListening
+                  ? 'bg-indigo-600 border-indigo-400 text-white'
+                  : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:border-indigo-500'
+              }`}
+              title={isListening ? 'Disattiva microfono' : 'Attiva microfono piano'}
+            >
+              {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isListening ? 'Mic ON' : 'Mic'}</span>
+            </button>
+
+            {/* Audio button */}
             {!audioStarted ? (
               <button
                 onClick={handleStartAudio}
@@ -168,6 +189,13 @@ export default function App() {
           </div>
         )}
 
+        {/* Mic permission denied warning */}
+        {permissionDenied && (
+          <div className="rounded-xl bg-red-900/30 border border-red-500/40 px-4 py-2.5 text-sm text-red-300 text-center">
+            Microfono negato — controlla i permessi del browser
+          </div>
+        )}
+
         {/* Flashcard quiz */}
         {!state.showIntro && !sessionComplete && currentNote && (
           <div className={`rounded-2xl border ${cardBg} p-3 sm:p-4`}>
@@ -178,6 +206,9 @@ export default function App() {
               sessionTotal={state.currentSession.length}
               results={state.answerResults}
               streak={state.streak}
+              micActive={isListening}
+              liveNote={liveNote}
+              confirmedNote={confirmedNote}
               onAnswer={handleAnswer}
               onPlayNote={handlePlayNote}
             />
