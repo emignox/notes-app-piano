@@ -160,14 +160,12 @@ export function Flashcard({
         </div>
       )}
 
-      {/* Feedback */}
-      {answerState !== 'idle' && (
-        <ResultFeedback
-          answerState={answerState}
-          correctNote={note}
-          onContinue={answerState === 'wrong' ? handleContinueAfterWrong : undefined}
-        />
-      )}
+      {/* Feedback — always present to avoid layout shift */}
+      <ResultFeedback
+        answerState={answerState}
+        correctNote={note}
+        onContinue={answerState === 'wrong' ? handleContinueAfterWrong : undefined}
+      />
 
       {/* Note name buttons */}
       <div className="bg-gray-800/60 rounded-xl p-2.5 border border-gray-700">
