@@ -87,10 +87,15 @@ export function Flashcard({
       const correct = noteMatchesAnswer(note, answer);
       setAnswerState(correct ? 'correct' : 'wrong');
       if (fromPiano) setPressedNote(answer);
-      setTimeout(() => onAnswer(correct), 1400);
+      if (correct) setTimeout(() => onAnswer(true), 600);
+      // wrong: user taps "Continua" to advance
     },
     [answerState, note, onAnswer],
   );
+
+  const handleContinueAfterWrong = useCallback(() => {
+    onAnswer(false);
+  }, [onAnswer]);
 
   // React to confirmed mic detections
   useEffect(() => {
@@ -156,7 +161,13 @@ export function Flashcard({
       )}
 
       {/* Feedback */}
-      {answerState !== 'idle' && <ResultFeedback answerState={answerState} correctNote={note} />}
+      {answerState !== 'idle' && (
+        <ResultFeedback
+          answerState={answerState}
+          correctNote={note}
+          onContinue={answerState === 'wrong' ? handleContinueAfterWrong : undefined}
+        />
+      )}
 
       {/* Note name buttons */}
       <div className="bg-gray-800/60 rounded-xl p-2.5 border border-gray-700">

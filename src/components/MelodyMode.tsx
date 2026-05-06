@@ -1,11 +1,12 @@
 import { useState, useCallback, useMemo } from 'react';
-import { CheckCircle, XCircle, Volume2, ChevronLeft } from 'lucide-react';
+import { Volume2, ChevronLeft } from 'lucide-react';
 import type { NoteEntry, NoteResult, AnswerState, MelodyNote } from '../types';
 import { melodies } from '../data/melodies';
 import type { Melody } from '../types';
 import { Staff } from './Staff';
 import { NoteNameButtons } from './NoteNameButtons';
 import { PianoKeyboard } from './PianoKeyboard';
+import { ResultFeedback } from './ResultFeedback';
 
 interface MelodyModeProps {
   learnedToneNotes: string[];
@@ -252,11 +253,16 @@ function MelodyChallenge({
         setScore(s => s + 1);
         onPlayNote(entry.toneNote);
         suppressMic(2000);
+        setTimeout(() => advance(), 700);
       }
-      setTimeout(() => advance(), correct ? 1200 : 1500);
+      // wrong: user taps "Continua" to advance
     },
     [answerState, done, noteEntries, currentIdx, onPlayNote, suppressMic, advance],
   );
+
+  const handleContinueAfterWrong = useCallback(() => {
+    advance();
+  }, [advance]);
 
   const handlePianoKey = useCallback(
     (toneNote: string) => {
@@ -349,24 +355,11 @@ function MelodyChallenge({
 
       {/* Feedback */}
       {answerState !== 'idle' && (
-        <div
-          className={`flex items-center gap-3 px-5 py-3 rounded-xl font-semibold text-lg transition-all ${
-            answerState === 'correct'
-              ? 'bg-green-900/60 border border-green-500 text-green-300'
-              : 'bg-red-900/60 border border-red-500 text-red-300'
-          }`}
-        >
-          {answerState === 'correct' ? (
-            <CheckCircle className="w-6 h-6 text-green-400 flex-shrink-0" />
-          ) : (
-            <XCircle className="w-6 h-6 text-red-400 flex-shrink-0" />
-          )}
-          <span>
-            {answerState === 'correct'
-              ? 'Corretto!'
-              : `Sbagliato! Era ${currentEntry.displayName} (${currentEntry.englishName})`}
-          </span>
-        </div>
+        <ResultFeedback
+          answerState={answerState}
+          correctNote={currentEntry}
+          onContinue={answerState === 'wrong' ? handleContinueAfterWrong : undefined}
+        />
       )}
 
       {/* Note name buttons */}
