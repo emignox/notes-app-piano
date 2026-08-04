@@ -1,44 +1,61 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental } from 'vexflow';
-import type { NoteEntry, NoteResult, AnswerState } from '../types';
+// ─────────────────────────────────────────────────────────────────────────────
+// Pentagramma (VexFlow) in due modalità:
+//
+//  · focus    → una sola nota, grande, centrata, altezza calcolata sulle linee
+//               aggiuntive che servono. È la vista dell'esercizio di lettura.
+//  · sequence → più note con scorrimento e colori per risposta: melodie e
+//               ripasso, con doppio pentagramma se ci sono entrambe le chiavi.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { useEffect, useMemo, useRef } from 'react';
+import { Accidental, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow';
+import type { AnswerState, NoteEntry, NoteResult } from '../types';
+import { staffSlot } from '../lib/notes';
 
 interface StaffProps {
-  notes: NoteEntry[];
-  currentIndex: number;
-  results: NoteResult[];
-  currentAnswerState: AnswerState;
-  durations?: string[];  // per-note VexFlow durations
+  entries: NoteEntry[];
+  activeIndex?: number;
+  results?: NoteResult[];
+  answerState?: AnswerState;
+  durations?: string[];
+  variant?: 'focus' | 'sequence';
 }
+
+const INK = '#101828';
+const GOOD = '#15803d';
+const BAD = '#dc2626';
+const GHOST = '#94a3b840';
 
 const NOTE_WIDTH = 68;
 const CLEF_WIDTH = 58;
 const PADDING = 24;
+// Le y sono quelle passate a Stave(): la prima linea cade 40px più in basso.
+// Le altezze lasciano posto alle linee aggiuntive sopra e sotto.
+const SINGLE_H = 152;
+const SINGLE_STAVE_Y = 14;
+const GRAND_H = 258;
+const TREBLE_Y = 6;
+const BASS_Y = 122;
 
-// Single stave dimensions
-const SINGLE_H = 165;
-const SINGLE_STAVE_Y = 38;
-
-// Grand staff dimensions (treble + bass)
-const GRAND_H = 310;
-const TREBLE_Y = 30;
-const BASS_Y = 175;
-
-function noteColor(
-  originalIdx: number,
-  currentIndex: number,
+function colorFor(
+  idx: number,
+  activeIndex: number,
   results: NoteResult[],
-  currentAnswerState: AnswerState,
+  answerState: AnswerState,
 ): string {
-  if (originalIdx < currentIndex) return results[originalIdx] === 'correct' ? '#16a34a' : '#dc2626';
-  if (originalIdx === currentIndex) {
-    if (currentAnswerState === 'correct') return '#16a34a';
-    if (currentAnswerState === 'wrong') return '#dc2626';
-    return '#6366f1';
+  if (idx < activeIndex) {
+    if (results[idx] === 'wrong') return BAD;
+    return results[idx] === 'correct' ? GOOD : INK;
   }
-  return '#94a3b830'; // ghost for upcoming
+  if (idx === activeIndex) {
+    if (answerState === 'correct') return GOOD;
+    if (answerState === 'wrong') return BAD;
+    return INK;
+  }
+  return GHOST;
 }
 
-function buildStaveNote(entry: NoteEntry, color: string, duration = 'q'): StaveNote {
+function buildNote(entry: NoteEntry, color: string, duration: string): StaveNote {
   const sn = new StaveNote({ keys: [entry.vexflowKey], duration, clef: entry.clef });
   if (entry.accidental) {
     const sym = entry.accidental === 'sharp' ? '#' : entry.accidental === 'flat' ? 'b' : 'n';
@@ -48,141 +65,246 @@ function buildStaveNote(entry: NoteEntry, color: string, duration = 'q'): StaveN
   return sn;
 }
 
-export function Staff({ notes, currentIndex, results, currentAnswerState, durations }: StaffProps) {
+/**
+ * Rende l'SVG elastico: si adatta alla larghezza dello schermo senza tagliare.
+ * VexFlow scrive width/height anche negli STILI inline, che vincono sugli
+ * attributi: vanno sovrascritti entrambi, altrimenti il disegno resta a 1:1.
+ */
+function makeResponsive(container: HTMLElement, width: number, height: number) {
+  const svg = container.querySelector('svg');
+  if (!svg) return;
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+}
+
+// ── Modalità focus ──────────────────────────────────────────────────────────
+
+// Disegno stretto: scalando sulla larghezza dello schermo il pentagramma
+// diventa grande e leggibile anche su telefoni piccoli.
+const FOCUS_W = 240;
+const MARGIN_V = 22;
+const LINE_GAP = 5;      // mezza distanza fra le linee
+// VexFlow riserva 4 spazi (40px) sopra la prima linea: la y passata a Stave()
+// NON è la linea più alta. Senza questo scarto la nota finisce fuori dal foglio.
+const STAVE_TOP_PAD = 40;
+const STAVE_LINES_H = 40;
+// La chiave sporge sopra e sotto le linee: va lasciato il posto anche a lei.
+const CLEF_OVERSHOOT = 15;
+
+function FocusStaff({ entry, answerState }: { entry: NoteEntry; answerState: AnswerState }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // L'altezza segue l'inchiostro (pentagramma + chiave + nota, anche con molte
+  // linee aggiuntive) così il disegno è sempre centrato e mai tagliato.
+  const { height, staveY } = useMemo(() => {
+    const slot = staffSlot(entry.englishName, entry.clef);
+    const bottomLine = STAVE_TOP_PAD + STAVE_LINES_H;
+    const noteY = bottomLine - slot * LINE_GAP;
+    const inkTop = Math.min(STAVE_TOP_PAD - CLEF_OVERSHOOT, noteY - 10);
+    const inkBottom = Math.max(bottomLine + CLEF_OVERSHOOT, noteY + 10);
+    return { height: inkBottom - inkTop + MARGIN_V * 2, staveY: MARGIN_V - inkTop };
+  }, [entry]);
+
+  useEffect(() => {
+    const container = ref.current;
+    if (!container) return;
+    container.innerHTML = '';
+
+    const renderer = new Renderer(container, Renderer.Backends.SVG);
+    renderer.resize(FOCUS_W, height);
+    const ctx = renderer.getContext();
+
+    const stave = new Stave(8, staveY, FOCUS_W - 16);
+    stave.addClef(entry.clef);
+    stave.setContext(ctx).draw();
+
+    const color = answerState === 'correct' ? GOOD : answerState === 'wrong' ? BAD : INK;
+    const note = buildNote(entry, color, 'w');
+
+    // Le note partono dal centro del pentagramma: la carta è una nota sola e al
+    // centro si legge meglio che appiccicata alla chiave.
+    stave.setNoteStartX(Math.round(stave.getX() + stave.getWidth() / 2) - 14);
+
+    const voice = new Voice({ numBeats: 4, beatValue: 4 }).setMode(Voice.Mode.SOFT);
+    voice.addTickables([note]);
+    new Formatter().joinVoices([voice]).format([voice], 40);
+    voice.draw(ctx, stave);
+
+    makeResponsive(container, FOCUS_W, height);
+    return () => { container.innerHTML = ''; };
+  }, [entry, answerState, height, staveY]);
+
+  return (
+    <div
+      className="w-full overflow-hidden rounded-2xl border border-amber-300/40 shadow-inner"
+      style={{
+        aspectRatio: `${FOCUS_W} / ${height}`,
+        maxHeight: 260,
+        background: 'linear-gradient(180deg, var(--c-paper) 0%, var(--c-paper2) 100%)',
+      }}
+    >
+      <div ref={ref} className="h-full w-full" />
+    </div>
+  );
+}
+
+// ── Modalità sequenza ───────────────────────────────────────────────────────
+
+function SequenceStaff({
+  entries,
+  activeIndex,
+  results,
+  answerState,
+  durations,
+}: {
+  entries: NoteEntry[];
+  activeIndex: number;
+  results: NoteResult[];
+  answerState: AnswerState;
+  durations?: string[];
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Posizione reale della nota attiva, letta dal disegno: la freccia deve stare
+  // sopra la nota vera, non sopra una stima basata su una larghezza fissa.
+  // È una misura, non uno stato: si scrive direttamente sull'elemento.
+  const arrowRef = useRef<HTMLDivElement>(null);
 
-  const isMixed = useMemo(() => {
-    const clefs = new Set(notes.map(n => n.clef));
-    return clefs.size > 1;
-  }, [notes]);
+  const isMixed = useMemo(() => new Set(entries.map(e => e.clef)).size > 1, [entries]);
 
-  // Split notes by clef, keeping original indices for coloring
   const trebleEntries = useMemo(
-    () => notes.map((n, i) => ({ note: n, idx: i })).filter(x => x.note.clef === 'treble'),
-    [notes],
+    () => entries.map((note, idx) => ({ note, idx })).filter(x => x.note.clef === 'treble'),
+    [entries],
   );
   const bassEntries = useMemo(
-    () => notes.map((n, i) => ({ note: n, idx: i })).filter(x => x.note.clef === 'bass'),
-    [notes],
+    () => entries.map((note, idx) => ({ note, idx })).filter(x => x.note.clef === 'bass'),
+    [entries],
   );
 
   const totalHeight = isMixed ? GRAND_H : SINGLE_H;
+  const maxNotes = isMixed ? Math.max(trebleEntries.length, bassEntries.length) : entries.length;
+  const width = CLEF_WIDTH + Math.max(1, maxNotes) * NOTE_WIDTH + PADDING;
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || notes.length === 0) return;
+    if (!container || entries.length === 0) return;
     container.innerHTML = '';
-
-    const maxNotes = isMixed
-      ? Math.max(trebleEntries.length, bassEntries.length)
-      : notes.length;
-    const width = CLEF_WIDTH + maxNotes * NOTE_WIDTH + PADDING;
 
     const renderer = new Renderer(container, Renderer.Backends.SVG);
     renderer.resize(width, totalHeight);
     const ctx = renderer.getContext();
     ctx.setFont('Arial', 10);
 
-    if (!isMixed) {
-      // ── Single stave ──────────────────────────────────────────────
-      const stave = new Stave(10, SINGLE_STAVE_Y, width - 20);
-      stave.addClef(notes[0].clef);
-      stave.setContext(ctx).draw();
+    const beats = (d: string) => (d === 'w' ? 4 : d === 'h' ? 2 : d === 'q' ? 1 : 0.5);
 
-      const staveNotes = notes.map((entry, idx) =>
-        buildStaveNote(entry, noteColor(idx, currentIndex, results, currentAnswerState), durations?.[idx] ?? 'q'),
+    const drawGroup = (group: { note: NoteEntry; idx: number }[], stave: Stave) => {
+      if (group.length === 0) return;
+      const notes = group.map(({ note, idx }) =>
+        buildNote(note, colorFor(idx, activeIndex, results, answerState), durations?.[idx] ?? 'q'),
       );
-      const totalBeats = durations
-        ? durations.reduce((sum, d) => sum + (d === 'w' ? 4 : d === 'h' ? 2 : d === 'q' ? 1 : 0.5), 0)
-        : notes.length;
-      const voice = new Voice({ numBeats: Math.ceil(totalBeats), beatValue: 4 }).setMode(Voice.Mode.SOFT);
-      voice.addTickables(staveNotes);
+      const total = group.reduce((sum, { idx }) => sum + beats(durations?.[idx] ?? 'q'), 0);
+      const voice = new Voice({ numBeats: Math.max(1, Math.ceil(total)), beatValue: 4 }).setMode(Voice.Mode.SOFT);
+      voice.addTickables(notes);
       new Formatter().joinVoices([voice]).format([voice], width - CLEF_WIDTH - PADDING);
       voice.draw(ctx, stave);
+
+      const activePos = group.findIndex(g => g.idx === activeIndex);
+      if (activePos > -1 && arrowRef.current) {
+        try {
+          arrowRef.current.style.left = `${notes[activePos].getAbsoluteX() - 6}px`;
+        } catch {
+          /* resta la stima iniziale */
+        }
+      }
+    };
+
+    if (!isMixed) {
+      const stave = new Stave(10, SINGLE_STAVE_Y, width - 20);
+      stave.addClef(entries[0].clef);
+      stave.setContext(ctx).draw();
+      drawGroup(entries.map((note, idx) => ({ note, idx })), stave);
     } else {
-      // ── Grand staff (treble + bass) ───────────────────────────────
-      const trebleStave = new Stave(10, TREBLE_Y, width - 20);
-      trebleStave.addClef('treble');
-      trebleStave.setContext(ctx).draw();
-
-      const bassStave = new Stave(10, BASS_Y, width - 20);
-      bassStave.addClef('bass');
-      bassStave.setContext(ctx).draw();
-
-      const formatAndDraw = (
-        entries: { note: NoteEntry; idx: number }[],
-        stave: Stave,
-      ) => {
-        if (entries.length === 0) return;
-        const staveNotes = entries.map(({ note, idx }) =>
-          buildStaveNote(note, noteColor(idx, currentIndex, results, currentAnswerState), durations?.[idx] ?? 'q'),
-        );
-        const entryBeats = durations
-          ? entries.reduce((sum, { idx }) => {
-              const d = durations[idx] ?? 'q';
-              return sum + (d === 'w' ? 4 : d === 'h' ? 2 : d === 'q' ? 1 : 0.5);
-            }, 0)
-          : entries.length;
-        const voice = new Voice({ numBeats: Math.ceil(entryBeats), beatValue: 4 }).setMode(Voice.Mode.SOFT);
-        voice.addTickables(staveNotes);
-        new Formatter().joinVoices([voice]).format([voice], width - CLEF_WIDTH - PADDING);
-        voice.draw(ctx, stave);
-      };
-
-      formatAndDraw(trebleEntries, trebleStave);
-      formatAndDraw(bassEntries, bassStave);
+      const treble = new Stave(10, TREBLE_Y, width - 20);
+      treble.addClef('treble');
+      treble.setContext(ctx).draw();
+      const bass = new Stave(10, BASS_Y, width - 20);
+      bass.addClef('bass');
+      bass.setContext(ctx).draw();
+      drawGroup(trebleEntries, treble);
+      drawGroup(bassEntries, bass);
     }
 
     return () => { container.innerHTML = ''; };
-  }, [notes, currentIndex, results, currentAnswerState, isMixed, trebleEntries, bassEntries, totalHeight, durations]);
+  }, [entries, activeIndex, results, answerState, durations, isMixed, trebleEntries, bassEntries, width, totalHeight]);
 
-  // Auto-scroll to keep active note centred
+  const currentClef = entries[activeIndex]?.clef ?? 'treble';
+  const localIdx = isMixed
+    ? (currentClef === 'treble'
+        ? trebleEntries.findIndex(x => x.idx === activeIndex)
+        : bassEntries.findIndex(x => x.idx === activeIndex))
+    : activeIndex;
+
+  // Tiene la nota attiva al centro dello scorrimento.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const localIdx = isMixed
-      ? (notes[currentIndex]?.clef === 'treble'
-          ? trebleEntries.findIndex(x => x.idx === currentIndex)
-          : bassEntries.findIndex(x => x.idx === currentIndex))
-      : currentIndex;
     const targetX = Math.max(0, CLEF_WIDTH + localIdx * NOTE_WIDTH - el.clientWidth / 2);
     el.scrollTo({ left: targetX, behavior: 'smooth' });
-  }, [currentIndex, isMixed, notes, trebleEntries, bassEntries]);
+  }, [localIdx]);
 
-  // Arrow indicator position
-  const currentClef = notes[currentIndex]?.clef ?? 'treble';
-  const localIdx = isMixed
-    ? (currentClef === 'treble'
-        ? trebleEntries.findIndex(x => x.idx === currentIndex)
-        : bassEntries.findIndex(x => x.idx === currentIndex))
-    : currentIndex;
-  const arrowX = CLEF_WIDTH + Math.max(0, localIdx) * NOTE_WIDTH + NOTE_WIDTH / 2 - 7;
-  const arrowY = isMixed
-    ? (currentClef === 'treble' ? TREBLE_Y - 16 : BASS_Y - 16)
-    : SINGLE_STAVE_Y - 16;
-  const totalWidth = CLEF_WIDTH + Math.max(
-    isMixed ? Math.max(trebleEntries.length, bassEntries.length) : notes.length,
-    1,
-  ) * NOTE_WIDTH + PADDING;
+  // +20: la prima linea sta 40px sotto la y dello Stave, la freccia va appena sopra.
+  const arrowX = CLEF_WIDTH + Math.max(0, localIdx) * NOTE_WIDTH + NOTE_WIDTH / 2 - 6;
+  const arrowY = (isMixed ? (currentClef === 'treble' ? TREBLE_Y : BASS_Y) : SINGLE_STAVE_Y) + 20;
 
   return (
     <div
       ref={scrollRef}
-      className="overflow-x-auto w-full rounded-xl shadow-inner border border-amber-200/80"
-      style={{ height: totalHeight, background: 'linear-gradient(180deg, #fffbeb 0%, #fef9e7 100%)' }}
+      className="thin-scroll w-full overflow-x-auto rounded-2xl border border-amber-300/40 shadow-inner"
+      style={{
+        height: totalHeight,
+        background: 'linear-gradient(180deg, var(--c-paper) 0%, var(--c-paper2) 100%)',
+      }}
     >
-      <div className="relative" style={{ width: totalWidth, height: totalHeight }}>
+      <div className="relative" style={{ width, height: totalHeight }}>
         <div ref={containerRef} className="absolute inset-0" />
-        {currentAnswerState === 'idle' && currentIndex < notes.length && localIdx >= 0 && (
+        {answerState === 'idle' && activeIndex < entries.length && localIdx >= 0 && (
           <div
-            className="absolute pointer-events-none select-none font-bold"
-            style={{ left: arrowX, top: arrowY, color: '#6366f1', fontSize: 13, lineHeight: 1 }}
+            ref={arrowRef}
+            className="pointer-events-none absolute select-none font-bold"
+            style={{ left: arrowX, top: arrowY, color: 'var(--c-brand)', fontSize: 14, lineHeight: 1 }}
           >
             ▼
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+export function Staff({
+  entries,
+  activeIndex = 0,
+  results,
+  answerState = 'idle',
+  durations,
+  variant = 'sequence',
+}: StaffProps) {
+  if (entries.length === 0) return null;
+  if (variant === 'focus') {
+    const entry = entries[Math.min(activeIndex, entries.length - 1)];
+    return <FocusStaff entry={entry} answerState={answerState} />;
+  }
+  return (
+    <SequenceStaff
+      entries={entries}
+      activeIndex={activeIndex}
+      results={results ?? entries.map(() => 'unanswered')}
+      answerState={answerState}
+      durations={durations}
+    />
   );
 }

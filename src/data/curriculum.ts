@@ -1,410 +1,143 @@
-import type { NoteEntry } from '../types';
+// ─────────────────────────────────────────────────────────────────────────────
+// Il percorso di apprendimento.
+//
+// Le voci sono GENERATE dal nome della nota: id, pentagramma, nome italiano e
+// suono derivano tutti dalla stessa fonte, così non possono più andare fuori
+// sincrono (la vecchia versione scritta a mano aveva le descrizioni sfasate di
+// una posizione e un Fa6 che suonava Fa5).
+//
+// L'ORDINE È PARTE DEI DATI SALVATI: il progresso è "quante note ho sbloccato",
+// quindi si può solo aggiungere in coda, mai riordinare.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { Clef, NoteEntry, Stage } from '../types';
+import { isLandmark, italianOf, parseNote } from '../lib/notes';
+
+interface NoteOpts {
+  mnemonic?: string;
+}
+
+function makeNote(clef: Clef, toneNote: string, stageId: string, opts: NoteOpts = {}): NoteEntry {
+  const { letter, acc, octave } = parseNote(toneNote);
+  const id = `${toneNote.toLowerCase().replace('#', 's')}_${clef}`;
+  return {
+    id,
+    clef,
+    pitch: `${letter}${acc}/${octave}`,
+    displayName: italianOf(toneNote),
+    englishName: toneNote,
+    vexflowKey: `${letter.toLowerCase()}${acc}/${octave}`,
+    accidental: acc === '#' ? 'sharp' : acc === 'b' ? 'flat' : undefined,
+    noteValue: 'whole',
+    toneNote,
+    stageId,
+    landmark: isLandmark(toneNote, clef),
+    mnemonic: opts.mnemonic,
+  };
+}
+
+const MNEMONICS: Record<string, string> = {
+  c4_treble:
+    'Il Do centrale è il tuo punto zero: unica linetta appoggiata sotto il pentagramma. Sul piano è il Do vicino alla serratura/logo.',
+  g4_treble:
+    'La chiave di violino è una spirale che si avvolge proprio attorno alla 2ª linea: quella linea è il SOL. Da qui puoi contare tutto.',
+  c5_treble: 'Do del 3° spazio: sta esattamente in mezzo al pentagramma, un\'ottava sopra il Do centrale.',
+  f5_treble: 'Fa sulla linea più alta: chiude il pentagramma di violino.',
+  f3_bass:
+    'La chiave di basso ha DUE PUNTI che abbracciano la 4ª linea: quella linea è il FA. È il riferimento gemello del Sol di violino.',
+  g2_bass: 'Sol sulla linea più bassa: apre il pentagramma di basso.',
+  c3_bass: 'Do del 2° spazio: un\'ottava sotto il Do centrale.',
+  c4_bass: 'Stesso Do centrale della chiave di violino, ma qui sta SOPRA il pentagramma: è il ponte fra le due mani.',
+  fs4_treble: 'Il diesis ♯ alza di un semitono: stessa posizione del Fa, ma suoni il tasto nero subito a destra.',
+  bb4_treble: 'Il bemolle ♭ abbassa di un semitono: stessa posizione del Si, ma suoni il tasto nero subito a sinistra.',
+};
+
+function build(clef: Clef, notes: string[], stageId: string): NoteEntry[] {
+  return notes.map(n => {
+    const entry = makeNote(clef, n, stageId);
+    return MNEMONICS[entry.id] ? { ...entry, mnemonic: MNEMONICS[entry.id] } : entry;
+  });
+}
+
+// ── I gruppi, nell'ordine in cui si sbloccano ───────────────────────────────
+
+const trebleCore = build('treble', ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5'], 'treble-core');
+const bassCore = build('bass', ['G2', 'A2', 'B2', 'C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3', 'C4'], 'bass-core');
+const sharps = build('treble', ['F#4', 'C#4', 'G#4', 'D#4', 'A#4'], 'sharps');
+const flats = build('treble', ['Bb4', 'Eb4', 'Ab4', 'Db4', 'Gb4'], 'flats');
+const ledger = build('treble', ['C3', 'F6'], 'ledger');
+const extended = [
+  ...build('treble', ['A5', 'B5', 'C6'], 'extended'),
+  ...build('bass', ['F2', 'E2'], 'extended'),
+];
 
 export const curriculum: NoteEntry[] = [
-  // === CHIAVE DI VIOLINO (TREBLE) ===
-  {
-    id: 'c4_treble',
-    clef: 'treble',
-    pitch: 'C/4',
-    displayName: 'Do',
-    englishName: 'C4',
-    vexflowKey: 'c/4',
-    noteValue: 'whole',
-    description: 'Primo spazio sotto il pentagramma (Do centrale) in chiave di violino',
-    toneNote: 'C4',
-  },
-  {
-    id: 'd4_treble',
-    clef: 'treble',
-    pitch: 'D/4',
-    displayName: 'Re',
-    englishName: 'D4',
-    vexflowKey: 'd/4',
-    noteValue: 'whole',
-    description: 'Prima linea del pentagramma in chiave di violino',
-    toneNote: 'D4',
-  },
-  {
-    id: 'e4_treble',
-    clef: 'treble',
-    pitch: 'E/4',
-    displayName: 'Mi',
-    englishName: 'E4',
-    vexflowKey: 'e/4',
-    noteValue: 'whole',
-    description: 'Primo spazio del pentagramma in chiave di violino',
-    toneNote: 'E4',
-  },
-  {
-    id: 'f4_treble',
-    clef: 'treble',
-    pitch: 'F/4',
-    displayName: 'Fa',
-    englishName: 'F4',
-    vexflowKey: 'f/4',
-    noteValue: 'whole',
-    description: 'Seconda linea del pentagramma in chiave di violino',
-    toneNote: 'F4',
-  },
-  {
-    id: 'g4_treble',
-    clef: 'treble',
-    pitch: 'G/4',
-    displayName: 'Sol',
-    englishName: 'G4',
-    vexflowKey: 'g/4',
-    noteValue: 'whole',
-    description: 'Secondo spazio del pentagramma in chiave di violino',
-    toneNote: 'G4',
-  },
-  {
-    id: 'a4_treble',
-    clef: 'treble',
-    pitch: 'A/4',
-    displayName: 'La',
-    englishName: 'A4',
-    vexflowKey: 'a/4',
-    noteValue: 'whole',
-    description: 'Terza linea del pentagramma in chiave di violino',
-    toneNote: 'A4',
-  },
-  {
-    id: 'b4_treble',
-    clef: 'treble',
-    pitch: 'B/4',
-    displayName: 'Si',
-    englishName: 'B4',
-    vexflowKey: 'b/4',
-    noteValue: 'whole',
-    description: 'Terzo spazio del pentagramma in chiave di violino',
-    toneNote: 'B4',
-  },
-  {
-    id: 'c5_treble',
-    clef: 'treble',
-    pitch: 'C/5',
-    displayName: 'Do',
-    englishName: 'C5',
-    vexflowKey: 'c/5',
-    noteValue: 'whole',
-    description: 'Quarta linea del pentagramma in chiave di violino',
-    toneNote: 'C5',
-  },
-  {
-    id: 'd5_treble',
-    clef: 'treble',
-    pitch: 'D/5',
-    displayName: 'Re',
-    englishName: 'D5',
-    vexflowKey: 'd/5',
-    noteValue: 'whole',
-    description: 'Quarto spazio del pentagramma in chiave di violino',
-    toneNote: 'D5',
-  },
-  {
-    id: 'e5_treble',
-    clef: 'treble',
-    pitch: 'E/5',
-    displayName: 'Mi',
-    englishName: 'E5',
-    vexflowKey: 'e/5',
-    noteValue: 'whole',
-    description: 'Quinta linea del pentagramma in chiave di violino',
-    toneNote: 'E5',
-  },
-  {
-    id: 'f5_treble',
-    clef: 'treble',
-    pitch: 'F/5',
-    displayName: 'Fa',
-    englishName: 'F5',
-    vexflowKey: 'f/5',
-    noteValue: 'whole',
-    description: 'Sopra la quinta linea del pentagramma in chiave di violino',
-    toneNote: 'F5',
-  },
-  {
-    id: 'g5_treble',
-    clef: 'treble',
-    pitch: 'G/5',
-    displayName: 'Sol',
-    englishName: 'G5',
-    vexflowKey: 'g/5',
-    noteValue: 'whole',
-    description: 'Primo spazio sopra il pentagramma in chiave di violino',
-    toneNote: 'G5',
-  },
-
-  // === CHIAVE DI BASSO (BASS) ===
-  {
-    id: 'g2_bass',
-    clef: 'bass',
-    pitch: 'G/2',
-    displayName: 'Sol',
-    englishName: 'G2',
-    vexflowKey: 'g/2',
-    noteValue: 'whole',
-    description: 'Prima linea del pentagramma in chiave di basso',
-    toneNote: 'G2',
-  },
-  {
-    id: 'a2_bass',
-    clef: 'bass',
-    pitch: 'A/2',
-    displayName: 'La',
-    englishName: 'A2',
-    vexflowKey: 'a/2',
-    noteValue: 'whole',
-    description: 'Primo spazio del pentagramma in chiave di basso',
-    toneNote: 'A2',
-  },
-  {
-    id: 'b2_bass',
-    clef: 'bass',
-    pitch: 'B/2',
-    displayName: 'Si',
-    englishName: 'B2',
-    vexflowKey: 'b/2',
-    noteValue: 'whole',
-    description: 'Seconda linea del pentagramma in chiave di basso',
-    toneNote: 'B2',
-  },
-  {
-    id: 'c3_bass',
-    clef: 'bass',
-    pitch: 'C/3',
-    displayName: 'Do',
-    englishName: 'C3',
-    vexflowKey: 'c/3',
-    noteValue: 'whole',
-    description: 'Secondo spazio del pentagramma in chiave di basso',
-    toneNote: 'C3',
-  },
-  {
-    id: 'd3_bass',
-    clef: 'bass',
-    pitch: 'D/3',
-    displayName: 'Re',
-    englishName: 'D3',
-    vexflowKey: 'd/3',
-    noteValue: 'whole',
-    description: 'Terza linea del pentagramma in chiave di basso',
-    toneNote: 'D3',
-  },
-  {
-    id: 'e3_bass',
-    clef: 'bass',
-    pitch: 'E/3',
-    displayName: 'Mi',
-    englishName: 'E3',
-    vexflowKey: 'e/3',
-    noteValue: 'whole',
-    description: 'Terzo spazio del pentagramma in chiave di basso',
-    toneNote: 'E3',
-  },
-  {
-    id: 'f3_bass',
-    clef: 'bass',
-    pitch: 'F/3',
-    displayName: 'Fa',
-    englishName: 'F3',
-    vexflowKey: 'f/3',
-    noteValue: 'whole',
-    description: 'Quarta linea del pentagramma in chiave di basso',
-    toneNote: 'F3',
-  },
-  {
-    id: 'g3_bass',
-    clef: 'bass',
-    pitch: 'G/3',
-    displayName: 'Sol',
-    englishName: 'G3',
-    vexflowKey: 'g/3',
-    noteValue: 'whole',
-    description: 'Quarto spazio del pentagramma in chiave di basso',
-    toneNote: 'G3',
-  },
-  {
-    id: 'a3_bass',
-    clef: 'bass',
-    pitch: 'A/3',
-    displayName: 'La',
-    englishName: 'A3',
-    vexflowKey: 'a/3',
-    noteValue: 'whole',
-    description: 'Quinta linea del pentagramma in chiave di basso',
-    toneNote: 'A3',
-  },
-  {
-    id: 'b3_bass',
-    clef: 'bass',
-    pitch: 'B/3',
-    displayName: 'Si',
-    englishName: 'B3',
-    vexflowKey: 'b/3',
-    noteValue: 'whole',
-    description: 'Sopra la quinta linea del pentagramma in chiave di basso',
-    toneNote: 'B3',
-  },
-  {
-    id: 'c4_bass',
-    clef: 'bass',
-    pitch: 'C/4',
-    displayName: 'Do',
-    englishName: 'C4',
-    vexflowKey: 'c/4',
-    noteValue: 'whole',
-    description: 'Do centrale - primo spazio sopra il pentagramma in chiave di basso',
-    toneNote: 'C4',
-  },
-
-  // === DIESIS ===
-  {
-    id: 'fs4_treble',
-    clef: 'treble',
-    pitch: 'F#/4',
-    displayName: 'Fa♯',
-    englishName: 'F#4',
-    vexflowKey: 'f#/4',
-    accidental: 'sharp',
-    noteValue: 'whole',
-    description: 'Fa diesis - seconda linea del pentagramma in chiave di violino',
-    toneNote: 'F#4',
-  },
-  {
-    id: 'cs4_treble',
-    clef: 'treble',
-    pitch: 'C#/4',
-    displayName: 'Do♯',
-    englishName: 'C#4',
-    vexflowKey: 'c#/4',
-    accidental: 'sharp',
-    noteValue: 'whole',
-    description: 'Do diesis - sotto la prima linea del pentagramma in chiave di violino',
-    toneNote: 'C#4',
-  },
-  {
-    id: 'gs4_treble',
-    clef: 'treble',
-    pitch: 'G#/4',
-    displayName: 'Sol♯',
-    englishName: 'G#4',
-    vexflowKey: 'g#/4',
-    accidental: 'sharp',
-    noteValue: 'whole',
-    description: 'Sol diesis - secondo spazio del pentagramma in chiave di violino',
-    toneNote: 'G#4',
-  },
-  {
-    id: 'ds4_treble',
-    clef: 'treble',
-    pitch: 'D#/4',
-    displayName: 'Re♯',
-    englishName: 'D#4',
-    vexflowKey: 'd#/4',
-    accidental: 'sharp',
-    noteValue: 'whole',
-    description: 'Re diesis - prima linea del pentagramma in chiave di violino',
-    toneNote: 'D#4',
-  },
-  {
-    id: 'as4_treble',
-    clef: 'treble',
-    pitch: 'A#/4',
-    displayName: 'La♯',
-    englishName: 'A#4',
-    vexflowKey: 'a#/4',
-    accidental: 'sharp',
-    noteValue: 'whole',
-    description: 'La diesis - terza linea del pentagramma in chiave di violino',
-    toneNote: 'A#4',
-  },
-
-  // === BEMOLLE ===
-  {
-    id: 'bb4_treble',
-    clef: 'treble',
-    pitch: 'Bb/4',
-    displayName: 'Si♭',
-    englishName: 'Bb4',
-    vexflowKey: 'bb/4',
-    accidental: 'flat',
-    noteValue: 'whole',
-    description: 'Si bemolle - terzo spazio del pentagramma in chiave di violino',
-    toneNote: 'Bb4',
-  },
-  {
-    id: 'eb4_treble',
-    clef: 'treble',
-    pitch: 'Eb/4',
-    displayName: 'Mi♭',
-    englishName: 'Eb4',
-    vexflowKey: 'eb/4',
-    accidental: 'flat',
-    noteValue: 'whole',
-    description: 'Mi bemolle - primo spazio del pentagramma in chiave di violino',
-    toneNote: 'Eb4',
-  },
-  {
-    id: 'ab4_treble',
-    clef: 'treble',
-    pitch: 'Ab/4',
-    displayName: 'La♭',
-    englishName: 'Ab4',
-    vexflowKey: 'ab/4',
-    accidental: 'flat',
-    noteValue: 'whole',
-    description: 'La bemolle - terza linea del pentagramma in chiave di violino',
-    toneNote: 'Ab4',
-  },
-  {
-    id: 'db4_treble',
-    clef: 'treble',
-    pitch: 'Db/4',
-    displayName: 'Re♭',
-    englishName: 'Db4',
-    vexflowKey: 'db/4',
-    accidental: 'flat',
-    noteValue: 'whole',
-    description: 'Re bemolle - prima linea del pentagramma in chiave di violino',
-    toneNote: 'Db4',
-  },
-  {
-    id: 'gb4_treble',
-    clef: 'treble',
-    pitch: 'Gb/4',
-    displayName: 'Sol♭',
-    englishName: 'Gb4',
-    vexflowKey: 'gb/4',
-    accidental: 'flat',
-    noteValue: 'whole',
-    description: 'Sol bemolle - secondo spazio del pentagramma in chiave di violino',
-    toneNote: 'Gb4',
-  },
-
-  // === NOTE ESTREME ===
-  {
-    id: 'c3_treble',
-    clef: 'treble',
-    pitch: 'C/3',
-    displayName: 'Do',
-    englishName: 'C3',
-    vexflowKey: 'c/3',
-    noteValue: 'whole',
-    description: 'Do basso - due linee di taglio sotto il pentagramma in chiave di violino',
-    toneNote: 'C3',
-  },
-  {
-    id: 'f6_treble',
-    clef: 'treble',
-    pitch: 'F/6',
-    displayName: 'Fa',
-    englishName: 'F6',
-    vexflowKey: 'f/6',
-    noteValue: 'whole',
-    description: 'Fa acuto - due linee di taglio sopra il pentagramma in chiave di violino',
-    toneNote: 'F5',
-  },
+  ...trebleCore,
+  ...bassCore,
+  ...sharps,
+  ...flats,
+  ...ledger,
+  ...extended,
 ];
 
 export const TOTAL_LEVELS = curriculum.length;
+
+// ── Metadati dei gruppi (per la mappa del percorso) ─────────────────────────
+
+function range(stageId: string): { from: number; to: number } {
+  const idx = curriculum.reduce<number[]>((acc, n, i) => (n.stageId === stageId ? [...acc, i] : acc), []);
+  return { from: idx[0] ?? 0, to: idx[idx.length - 1] ?? 0 };
+}
+
+export const stages: Stage[] = [
+  {
+    id: 'treble-core',
+    title: 'Chiave di Violino',
+    subtitle: 'Le note della mano destra, dal Do centrale al Sol acuto',
+    emoji: '🎼',
+    ...range('treble-core'),
+  },
+  {
+    id: 'bass-core',
+    title: 'Chiave di Basso',
+    subtitle: 'Le note della mano sinistra, da Sol2 al Do centrale',
+    emoji: '🎹',
+    ...range('bass-core'),
+  },
+  {
+    id: 'sharps',
+    title: 'Diesis ♯',
+    subtitle: 'I tasti neri che salgono di un semitono',
+    emoji: '⬆️',
+    ...range('sharps'),
+  },
+  {
+    id: 'flats',
+    title: 'Bemolle ♭',
+    subtitle: 'I tasti neri che scendono di un semitono',
+    emoji: '⬇️',
+    ...range('flats'),
+  },
+  {
+    id: 'ledger',
+    title: 'Linee aggiuntive',
+    subtitle: 'Fuori dal pentagramma: acuti e gravi estremi',
+    emoji: '🪜',
+    ...range('ledger'),
+  },
+  {
+    id: 'extended',
+    title: 'Registri estesi',
+    subtitle: 'Gli estremi della tastiera',
+    emoji: '🚀',
+    ...range('extended'),
+  },
+];
+
+export function stageOf(index: number): Stage {
+  return stages.find(s => index >= s.from && index <= s.to) ?? stages[0];
+}
+
+export function noteById(id: string): NoteEntry | undefined {
+  return curriculum.find(n => n.id === id);
+}

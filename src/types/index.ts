@@ -1,38 +1,68 @@
+export type Clef = 'treble' | 'bass';
+
 export interface NoteEntry {
-  id: string;
-  clef: 'treble' | 'bass';
-  pitch: string;        // e.g. "C/4", "F#/4", "Bb/3"
-  displayName: string;  // e.g. "Do", "Fa♯", "Si♭"
-  englishName: string;  // e.g. "C4", "F#4", "Bb3"
-  vexflowKey: string;   // VexFlow format e.g. "c/4", "f#/4", "bb/3"
+  id: string;           // 'c4_treble', 'fs4_treble', 'bb4_treble'
+  clef: Clef;
+  pitch: string;        // "C/4", "F#/4"
+  displayName: string;  // "Do", "Fa♯", "Si♭"
+  englishName: string;  // "C4", "F#4", "Bb4"
+  vexflowKey: string;   // "c/4", "f#/4", "bb/4"
   accidental?: 'sharp' | 'flat' | 'natural';
   noteValue: 'whole' | 'half' | 'quarter';
-  description: string;  // e.g. "Prima linea del pentagramma in chiave di violino"
-  toneNote: string;     // Tone.js note name e.g. "C4", "F#4"
+  toneNote: string;     // nome per Tone.js
+  stageId: string;      // gruppo del percorso
+  mnemonic?: string;    // trucco mnemonico (solo per alcune note chiave)
+  landmark?: boolean;   // nota di riferimento
+}
+
+export interface Stage {
+  id: string;
+  title: string;
+  subtitle: string;
+  emoji: string;
+  from: number;   // indice inclusivo nel curriculum
+  to: number;     // indice inclusivo
 }
 
 export type NoteResult = 'unanswered' | 'correct' | 'wrong';
 
-export interface LearningState {
-  currentLevel: number;
-  learnedNotes: NoteEntry[];
-  currentSession: NoteEntry[];
-  currentIndex: number;
-  score: number;
-  showIntro: boolean;
-  answerResults: NoteResult[];
-  streak: number;
-}
-
 export type AnswerState = 'idle' | 'correct' | 'wrong';
 
+/** Direzione dell'esercizio: leggere la nota, oppure trovarla sulla tastiera. */
+export type Direction = 'read' | 'find';
+
 export interface MelodyNote {
-  toneNote: string;      // e.g. "E4", "C5"
-  vexflowKey: string;    // e.g. "e/4", "c/5"
+  toneNote: string;
+  vexflowKey: string;
   duration: 'w' | 'h' | 'q' | '8';
-  durationSec: number;   // per audio: w=2.0, h=1.0, q=0.5, 8=0.25
-  clef: 'treble' | 'bass';
+  /** Durata in battiti: la durata in secondi dipende dal tempo scelto. */
+  beats: number;
+  clef: Clef;
   accidental?: 'sharp' | 'flat';
+}
+
+/**
+ * Un passo di un pezzo a due mani: cosa suonano insieme la destra e la sinistra.
+ * Array vuoto = quella mano tace (pausa). Più note = accordo.
+ */
+export interface PieceStep {
+  duration: 'w' | 'h' | 'q' | '8';
+  beats: number;
+  treble: string[];
+  bass: string[];
+}
+
+export type Hand = 'both' | 'right' | 'left';
+
+export interface Piece {
+  id: string;
+  title: string;
+  composer: string;
+  difficulty: 'facile' | 'medio' | 'difficile';
+  emoji: string;
+  bpm: number;
+  hint: string;
+  steps: PieceStep[];
 }
 
 export interface Melody {
@@ -41,6 +71,7 @@ export interface Melody {
   composer: string;
   difficulty: 'facile' | 'medio' | 'difficile';
   emoji: string;
-  requiredToneNotes: string[];  // toneNotes che l'utente deve aver imparato
+  bpm: number;
+  requiredToneNotes: string[];
   notes: MelodyNote[];
 }

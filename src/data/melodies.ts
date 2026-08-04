@@ -1,42 +1,97 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Repertorio. Le note richieste si ricavano dalla melodia stessa, così una
+// canzone non può mai restare bloccata per un elenco sbagliato scritto a mano.
+//
+// Le durate sono in BATTITI: i secondi dipendono dal tempo scelto dall'utente,
+// che può rallentare per leggere e accelerare quando è pronto.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import type { Melody, MelodyNote } from '../types';
+import { parseNote } from '../lib/notes';
 
-function n(toneNote: string, dur: 'w' | 'h' | 'q' | '8' = 'q'): MelodyNote {
-  const octave = toneNote.match(/\d+/)?.[0] ?? '4';
-  const isSharp = toneNote.includes('#');
-  // Detect flat: note name has 'b' and is longer than 2 chars like 'Bb4', 'Eb4' etc.
-  const noteWithoutOctave = toneNote.replace(/\d+$/, '');
-  const isFlat = !isSharp && noteWithoutOctave.length > 1 && noteWithoutOctave.endsWith('b');
-  const base = noteWithoutOctave.replace(/[#b]/g, '').toLowerCase();
+type Dur = 'w' | 'h' | 'q' | '8';
 
-  let vexKey: string;
-  if (isSharp) {
-    vexKey = `${base}#/${octave}`;
-  } else if (isFlat) {
-    vexKey = `${base}b/${octave}`;
-  } else {
-    vexKey = `${base}/${octave}`;
-  }
+const BEATS: Record<Dur, number> = { w: 4, h: 2, q: 1, '8': 0.5 };
 
-  const durationSec = dur === 'w' ? 2.0 : dur === 'h' ? 1.0 : dur === 'q' ? 0.5 : 0.25;
-
+/** Nota della melodia: il pentagramma e l'alterazione si ricavano dal nome. */
+function n(toneNote: string, duration: Dur = 'q'): MelodyNote {
+  const { letter, acc, octave } = parseNote(toneNote);
   return {
     toneNote,
-    vexflowKey: vexKey,
-    duration: dur,
-    durationSec,
+    vexflowKey: `${letter.toLowerCase()}${acc}/${octave}`,
+    duration,
+    beats: BEATS[duration],
     clef: 'treble',
-    accidental: isSharp ? 'sharp' : isFlat ? 'flat' : undefined,
+    accidental: acc === '#' ? 'sharp' : acc === 'b' ? 'flat' : undefined,
+  };
+}
+
+interface MelodyInput {
+  id: string;
+  title: string;
+  composer: string;
+  difficulty: Melody['difficulty'];
+  emoji: string;
+  bpm: number;
+  notes: MelodyNote[];
+}
+
+function melody(input: MelodyInput): Melody {
+  return {
+    ...input,
+    requiredToneNotes: [...new Set(input.notes.map(x => x.toneNote))],
   };
 }
 
 export const melodies: Melody[] = [
-  {
+  melody({
+    id: 'scala-do',
+    title: 'Scala di Do',
+    composer: 'Esercizio',
+    difficulty: 'facile',
+    emoji: '🪜',
+    bpm: 80,
+    notes: [
+      n('C4'), n('D4'), n('E4'), n('F4'), n('G4'), n('A4'), n('B4'), n('C5', 'h'),
+      n('B4'), n('A4'), n('G4'), n('F4'), n('E4'), n('D4'), n('C4', 'w'),
+    ],
+  }),
+  melody({
+    id: 'arpeggio-do',
+    title: 'Arpeggio di Do',
+    composer: 'Esercizio',
+    difficulty: 'facile',
+    emoji: '🎯',
+    bpm: 80,
+    notes: [
+      n('C4'), n('E4'), n('G4'), n('C5', 'h'),
+      n('G4'), n('E4'), n('C4', 'w'),
+    ],
+  }),
+  melody({
+    id: 'fra-martino',
+    title: 'Fra Martino',
+    composer: 'Tradizionale',
+    difficulty: 'facile',
+    emoji: '🔔',
+    bpm: 92,
+    notes: [
+      n('C4'), n('D4'), n('E4'), n('C4'),
+      n('C4'), n('D4'), n('E4'), n('C4'),
+      n('E4'), n('F4'), n('G4', 'h'),
+      n('E4'), n('F4'), n('G4', 'h'),
+      n('G4', '8'), n('A4', '8'), n('G4', '8'), n('F4', '8'), n('E4'), n('C4'),
+      n('G4', '8'), n('A4', '8'), n('G4', '8'), n('F4', '8'), n('E4'), n('C4'),
+      n('C4'), n('G4'), n('C4', 'h'),
+    ],
+  }),
+  melody({
     id: 'inno-alla-gioia',
     title: 'Inno alla Gioia',
     composer: 'Beethoven',
     difficulty: 'facile',
     emoji: '🎵',
-    requiredToneNotes: ['C4', 'D4', 'E4', 'F4', 'G4'],
+    bpm: 96,
     notes: [
       n('E4'), n('E4'), n('F4'), n('G4'),
       n('G4'), n('F4'), n('E4'), n('D4'),
@@ -47,14 +102,14 @@ export const melodies: Melody[] = [
       n('C4'), n('C4'), n('D4'), n('E4'),
       n('D4', 'h'), n('C4', 'h'),
     ],
-  },
-  {
-    id: 'stella-lucente',
-    title: 'Stella Lucente',
-    composer: 'Mozart (trad.)',
+  }),
+  melody({
+    id: 'brilla-stellina',
+    title: 'Brilla Brilla Stellina',
+    composer: 'Tradizionale',
     difficulty: 'facile',
     emoji: '⭐',
-    requiredToneNotes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4'],
+    bpm: 92,
     notes: [
       n('C4'), n('C4'), n('G4'), n('G4'),
       n('A4'), n('A4'), n('G4', 'h'),
@@ -62,39 +117,66 @@ export const melodies: Melody[] = [
       n('D4'), n('D4'), n('C4', 'h'),
       n('G4'), n('G4'), n('F4'), n('F4'),
       n('E4'), n('E4'), n('D4', 'h'),
-      n('G4'), n('G4'), n('F4'), n('F4'),
-      n('E4'), n('E4'), n('D4', 'h'),
       n('C4'), n('C4'), n('G4'), n('G4'),
       n('A4'), n('A4'), n('G4', 'h'),
       n('F4'), n('F4'), n('E4'), n('E4'),
-      n('D4'), n('D4'), n('C4', 'h'),
+      n('D4'), n('D4'), n('C4', 'w'),
     ],
-  },
-  {
-    id: 'canone-pachelbel',
-    title: 'Canone',
-    composer: 'Pachelbel',
+  }),
+  melody({
+    id: 'tanti-auguri',
+    title: 'Tanti Auguri',
+    composer: 'Tradizionale',
     difficulty: 'medio',
-    emoji: '🎼',
-    requiredToneNotes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'],
+    emoji: '🎂',
+    bpm: 100,
     notes: [
-      n('D4'), n('A4'), n('B4'), n('F4'),
-      n('G4'), n('D4'), n('G4'), n('A4'),
-      n('F4'), n('C4'), n('D4'), n('A4'),
-      n('B4'), n('F4'), n('G4'), n('D4'),
-      n('D4'), n('E4'), n('F4'), n('G4'),
-      n('A4'), n('G4'), n('F4'), n('E4'),
-      n('D4'), n('F4'), n('A4'), n('G4'),
-      n('F4'), n('E4'), n('D4', 'h'), n('D4', 'h'),
+      n('G4', '8'), n('G4', '8'), n('A4'), n('G4'), n('C5'), n('B4', 'h'),
+      n('G4', '8'), n('G4', '8'), n('A4'), n('G4'), n('D5'), n('C5', 'h'),
+      n('G4', '8'), n('G4', '8'), n('G5'), n('E5'), n('C5'), n('B4'), n('A4', 'h'),
+      n('F5', '8'), n('F5', '8'), n('E5'), n('C5'), n('D5'), n('C5', 'h'),
     ],
-  },
-  {
+  }),
+  melody({
+    id: 'jingle-bells',
+    title: 'Jingle Bells',
+    composer: 'Pierpont',
+    difficulty: 'medio',
+    emoji: '❄️',
+    bpm: 104,
+    notes: [
+      n('E4'), n('E4'), n('E4', 'h'),
+      n('E4'), n('E4'), n('E4', 'h'),
+      n('E4'), n('G4'), n('C4'), n('D4'), n('E4', 'w'),
+      n('F4'), n('F4'), n('F4'), n('F4'),
+      n('F4'), n('E4'), n('E4'), n('E4', 'h'),
+      n('E4'), n('D4'), n('D4'), n('E4'), n('D4', 'h'), n('G4', 'h'),
+    ],
+  }),
+  melody({
+    id: 'ninna-nanna',
+    title: 'Ninna Nanna',
+    composer: 'Brahms',
+    difficulty: 'medio',
+    emoji: '🌙',
+    bpm: 76,
+    notes: [
+      n('E4', '8'), n('E4', '8'), n('G4', 'h'),
+      n('E4', '8'), n('E4', '8'), n('G4', 'h'),
+      n('E4'), n('G4'), n('C5', 'h'),
+      n('B4'), n('A4'), n('A4'), n('G4', 'h'),
+      n('D4'), n('E4'), n('F4'), n('D4', 'h'),
+      n('D4'), n('E4'), n('F4'), n('D4', 'h'),
+      n('F4'), n('A4'), n('C5'), n('B4'), n('A4'), n('G4', 'h'),
+    ],
+  }),
+  melody({
     id: 'minuetto-bach',
     title: 'Minuetto',
     composer: 'Petzold / Bach',
     difficulty: 'medio',
     emoji: '🎹',
-    requiredToneNotes: ['G4', 'A4', 'B4', 'C5', 'D5'],
+    bpm: 100,
     notes: [
       n('G4'), n('A4'), n('B4'), n('C5'),
       n('D5', 'h'), n('G4', 'h'),
@@ -105,14 +187,32 @@ export const melodies: Melody[] = [
       n('B4'), n('A4'), n('G4'), n('A4'),
       n('B4', 'h'), n('G4', 'h'),
     ],
-  },
-  {
+  }),
+  melody({
+    id: 'canone-pachelbel',
+    title: 'Canone',
+    composer: 'Pachelbel',
+    difficulty: 'medio',
+    emoji: '🎼',
+    bpm: 90,
+    notes: [
+      n('D5'), n('A4'), n('B4'), n('F#4'),
+      n('G4'), n('D4'), n('G4'), n('A4'),
+      n('F#4'), n('C5'), n('D5'), n('A4'),
+      n('B4'), n('F#4'), n('G4'), n('D4'),
+      n('D4'), n('E4'), n('F#4'), n('G4'),
+      n('A4'), n('G4'), n('F#4'), n('E4'),
+      n('D4'), n('F#4'), n('A4'), n('G4'),
+      n('F#4'), n('E4'), n('D4', 'h'), n('D4', 'h'),
+    ],
+  }),
+  melody({
     id: 'aria-bach',
     title: 'Aria',
     composer: 'Bach',
     difficulty: 'difficile',
     emoji: '🎻',
-    requiredToneNotes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5'],
+    bpm: 84,
     notes: [
       n('D5', 'h'), n('C5'), n('B4'),
       n('A4', 'h'), n('G4', 'h'),
@@ -123,14 +223,14 @@ export const melodies: Melody[] = [
       n('G4'), n('A4'), n('B4'), n('C5'),
       n('D5', 'w'),
     ],
-  },
-  {
+  }),
+  melody({
     id: 'sonatina-clementi',
     title: 'Sonatina',
     composer: 'Clementi',
     difficulty: 'difficile',
     emoji: '🎶',
-    requiredToneNotes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'],
+    bpm: 108,
     notes: [
       n('C5'), n('G4', '8'), n('A4', '8'),
       n('G4', 'h'), n('E4', 'h'),
@@ -141,5 +241,9 @@ export const melodies: Melody[] = [
       n('A4'), n('F4', '8'), n('G4', '8'),
       n('C5', 'w'),
     ],
-  },
+  }),
 ];
+
+export function melodyById(id: string): Melody | undefined {
+  return melodies.find(m => m.id === id);
+}
