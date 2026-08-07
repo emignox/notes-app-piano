@@ -53,6 +53,8 @@ export function useAudio(volume = 0.8) {
   const readyRef = useRef(false);
   const startedRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** Invalida in blocco una riproduzione, anche se Tone.start() è ancora async. */
+  const playbackIdRef = useRef(0);
   const metronomeRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -237,27 +239,31 @@ export function useAudio(volume = 0.8) {
   const playSequence = useCallback(
     (notes: SequenceNote[], onNote?: (index: number) => void, onEnd?: () => void) => {
       clearTimers();
+      const playbackId = ++playbackIdRef.current;
       withAudio(() => {
+        if (playbackId !== playbackIdRef.current) return;
         const v = voice();
         if (!v || notes.length === 0) return;
-        const lead = 0.15;
+        const lead = 0.08;
         let offset = 0;
-        const start = Tone.now() + lead;
 
         notes.forEach((n, i) => {
-          try {
-            v.triggerAttackRelease(n.toneNote, Math.max(0.12, n.durationSec * 0.92), start + offset);
-          } catch {
-            /* ignora */
-          }
-          if (onNote) {
-            const at = (lead + offset) * 1000;
-            timersRef.current.push(setTimeout(() => onNote(i), at));
-          }
+          const at = (lead + offset) * 1000;
+          timersRef.current.push(setTimeout(() => {
+            if (playbackId !== playbackIdRef.current) return;
+            try {
+              v.triggerAttackRelease(n.toneNote, Math.max(0.12, n.durationSec * 0.92));
+            } catch {
+              /* ignora */
+            }
+            onNote?.(i);
+          }, at));
           offset += n.durationSec;
         });
 
-      if (onEnd) timersRef.current.push(setTimeout(onEnd, (lead + offset) * 1000 + 120));
+        if (onEnd) timersRef.current.push(setTimeout(() => {
+          if (playbackId === playbackIdRef.current) onEnd();
+        }, (lead + offset) * 1000 + 120));
       });
     },
     [voice, clearTimers, withAudio],
@@ -271,26 +277,33 @@ export function useAudio(volume = 0.8) {
       onEnd?: () => void,
     ) => {
       clearTimers();
+      const playbackId = ++playbackIdRef.current;
       withAudio(() => {
+        if (playbackId !== playbackIdRef.current) return;
         const v = voice();
         if (!v || steps.length === 0) return;
-        const lead = 0.15;
+        const lead = 0.08;
         let offset = 0;
-        const start = Tone.now() + lead;
 
         steps.forEach((step, i) => {
-          if (step.notes.length > 0) {
-            try {
-              v.triggerAttackRelease(step.notes, Math.max(0.14, step.durationSec * 0.95), start + offset);
-            } catch {
-              /* ignora */
+          const at = (lead + offset) * 1000;
+          timersRef.current.push(setTimeout(() => {
+            if (playbackId !== playbackIdRef.current) return;
+            if (step.notes.length > 0) {
+              try {
+                v.triggerAttackRelease(step.notes, Math.max(0.14, step.durationSec * 0.95));
+              } catch {
+                /* ignora */
+              }
             }
-          }
-          if (onStep) timersRef.current.push(setTimeout(() => onStep(i), (lead + offset) * 1000));
+            onStep?.(i);
+          }, at));
           offset += step.durationSec;
         });
 
-      if (onEnd) timersRef.current.push(setTimeout(onEnd, (lead + offset) * 1000 + 120));
+        if (onEnd) timersRef.current.push(setTimeout(() => {
+          if (playbackId === playbackIdRef.current) onEnd();
+        }, (lead + offset) * 1000 + 120));
       });
     },
     [voice, clearTimers, withAudio],
@@ -313,30 +326,38 @@ export function useAudio(volume = 0.8) {
       onEnd?: () => void,
     ) => {
       clearTimers();
+      const playbackId = ++playbackIdRef.current;
       withAudio(() => {
+        if (playbackId !== playbackIdRef.current) return;
         const v = voice();
         if (!v || events.length === 0) return;
-        const lead = 0.15;
-        const start = Tone.now() + lead;
+        const lead = 0.08;
 
         events.forEach(e => {
-          try {
-            v.triggerAttackRelease(e.notes, Math.max(0.08, e.hold), start + e.at, e.velocity);
-          } catch {
-            /* una nota fuori range non deve fermare l'esecuzione */
-          }
+          timersRef.current.push(setTimeout(() => {
+            if (playbackId !== playbackIdRef.current) return;
+            try {
+              v.triggerAttackRelease(e.notes, Math.max(0.08, e.hold), undefined, e.velocity);
+            } catch {
+              /* una nota fuori range non deve fermare l'esecuzione */
+            }
+          }, (lead + e.at) * 1000));
         });
 
         // Il cursore si muove sui PASSI, non sugli eventi: in un passo dove una
         // mano tace non c'è nessun evento, ma il tempo scorre lo stesso.
         if (onStep) {
           stepTimes.forEach((t, i) => {
-            timersRef.current.push(setTimeout(() => onStep(i), (lead + t) * 1000));
+            timersRef.current.push(setTimeout(() => {
+              if (playbackId === playbackIdRef.current) onStep(i);
+            }, (lead + t) * 1000));
           });
         }
         if (onEnd) {
           const last = events.reduce((m, e) => Math.max(m, e.at + e.hold), 0);
-          timersRef.current.push(setTimeout(onEnd, (lead + last) * 1000 + 150));
+          timersRef.current.push(setTimeout(() => {
+            if (playbackId === playbackIdRef.current) onEnd();
+          }, (lead + last) * 1000 + 150));
         }
       });
     },
@@ -344,6 +365,7 @@ export function useAudio(volume = 0.8) {
   );
 
   const stopSequence = useCallback(() => {
+    playbackIdRef.current += 1;
     clearTimers();
     try {
       samplerRef.current?.releaseAll();

@@ -63,8 +63,12 @@ export function useProgress() {
   // Tema e vibrazione sono effetti globali: si applicano appena cambiano.
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.theme;
+    document.documentElement.dataset.largeText = String(data.settings.largeText);
+    document.documentElement.dataset.highContrast = String(data.settings.highContrast);
+    document.documentElement.dataset.reducedMotion = String(data.settings.reducedMotion);
+    document.documentElement.dataset.focusMode = String(data.settings.focusMode);
     document.documentElement.style.colorScheme = data.settings.theme;
-  }, [data.settings.theme]);
+  }, [data.settings]);
 
   useEffect(() => { setHaptics(data.settings.haptics); }, [data.settings.haptics]);
 
@@ -235,6 +239,55 @@ export function useProgress() {
     [apply],
   );
 
+  /** Conclude il test iniziale senza mai togliere contenuti già sbloccati. */
+  const completePlacement = useCallback(
+    (score: number) => {
+      const safe = Math.max(0, Math.min(5, Math.round(score)));
+      const suggested = safe <= 1 ? 1 : safe <= 3 ? 8 : 18;
+      apply(prev => ({
+        ...prev,
+        onboardingDone: true,
+        placementScore: safe,
+        unlockedCount: Math.max(prev.unlockedCount, Math.min(TOTAL_LEVELS, suggested)),
+      }));
+    },
+    [apply],
+  );
+
+  /** Somma attività in minuti; usato da sessioni e studio del repertorio. */
+  const recordStudyMinutes = useCallback(
+    (minutes: number) => {
+      const amount = Math.max(1, Math.round(minutes));
+      const day = todayKey();
+      apply(prev => ({
+        ...prev,
+        studyMinutes: { ...prev.studyMinutes, [day]: (prev.studyMinutes[day] ?? 0) + amount },
+      }));
+    },
+    [apply],
+  );
+
+  /** Memorizza la progressione di un loop e propone il tempo successivo. */
+  const recordPieceLoop = useCallback(
+    (key: string, perfect: boolean, bpm: number) => {
+      let nextBpm = bpm;
+      apply(prev => {
+        const old = prev.pieceLoops[key] ?? { perfectRuns: 0, bpm };
+        const perfectRuns = perfect ? old.perfectRuns + 1 : 0;
+        nextBpm = perfectRuns >= 2 ? bpm + 4 : bpm;
+        return {
+          ...prev,
+          pieceLoops: {
+            ...prev.pieceLoops,
+            [key]: { perfectRuns: perfectRuns >= 2 ? 0 : perfectRuns, bpm: nextBpm },
+          },
+        };
+      });
+      return nextBpm;
+    },
+    [apply],
+  );
+
   // ── Impostazioni e reset ──────────────────────────────────────────────────
   const setSettings = useCallback(
     (patch: Partial<Settings>) => {
@@ -262,6 +315,9 @@ export function useProgress() {
   const level = levelInfo(data.xp);
   const due = useMemo(() => computeDue(unlockedNotes, data.cards), [unlockedNotes, data.cards]);
   const goalPct = Math.min(1, todayStat.answers / Math.max(1, data.settings.dailyGoal));
+  const theoryDue = Object.entries(data.theory)
+    .filter(([, [correct, total]]) => total >= 2 && correct / total < 0.75)
+    .map(([id]) => id);
 
   return {
     data,
@@ -273,6 +329,7 @@ export function useProgress() {
     todayStat,
     goalPct,
     due,
+    theoryDue,
     canUnlockNext,
     isComplete: data.unlockedCount >= TOTAL_LEVELS,
     answer,
@@ -284,6 +341,9 @@ export function useProgress() {
     recordMelody,
     completeLesson,
     recordTheory,
+    completePlacement,
+    recordStudyMinutes,
+    recordPieceLoop,
     setSettings,
     resetAll,
     replaceState,

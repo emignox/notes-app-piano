@@ -50,6 +50,9 @@ export function StatsView({ progress }: StatsViewProps) {
 
   const bestSprint = Math.max(0, ...Object.values(data.sprintBest));
   const perfectMelodies = Object.values(data.melodyBest).filter(v => v >= 100).length;
+  const totalMinutes = Object.values(data.studyMinutes).reduce((sum, n) => sum + n, 0);
+  const todayMinutes = data.studyMinutes[todayKey()] ?? 0;
+  const stableLoops = Object.values(data.pieceLoops).filter(loop => loop.bpm > 0).length;
   const unlockedAch = allAchievements.filter(a => data.achievements.includes(a.id));
 
   return (
@@ -167,6 +170,8 @@ export function StatsView({ progress }: StatsViewProps) {
           <Stat label="Note sbloccate" value={`${data.unlockedCount}/${TOTAL_LEVELS}`} />
           <Stat label="Sessioni" value={String(data.sessions)} hint={`${data.perfectSessions} perfette`} />
           <Stat label="Sprint" value={String(bestSprint)} hint="record note/tempo" />
+          <Stat label="Studio reale" value={`${totalMinutes} min`} hint={`${todayMinutes} oggi`} />
+          <Stat label="Loop allenati" value={String(stableLoops)} hint="sezioni e mani" />
         </div>
       </Card>
 

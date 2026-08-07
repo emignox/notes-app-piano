@@ -15,12 +15,12 @@ export function Card({
   pad?: string;
 }) {
   return (
-    <div className={`rounded-2xl border border-line bg-surface ${pad} ${className}`}>{children}</div>
+    <div className={`rounded-[1.35rem] border border-line/80 bg-surface shadow-[0_12px_34px_rgba(0,0,0,0.10)] ${pad} ${className}`}>{children}</div>
   );
 }
 
 export function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-line bg-surface2 ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-line/80 bg-surface2 ${className}`}>{children}</div>;
 }
 
 type BtnVariant = 'primary' | 'ghost' | 'soft' | 'danger' | 'success';

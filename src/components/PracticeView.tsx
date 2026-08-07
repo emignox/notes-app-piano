@@ -17,12 +17,13 @@ import { parseNote } from '../lib/notes';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
-import { Btn, Card, Panel, Pill } from './ui';
+import { Bar, Btn, Card, Panel, Pill } from './ui';
 import type { Notify } from './ui';
 import { NoteIntro } from './NoteIntro';
 import { PracticeCard } from './PracticeCard';
 import type { SessionLogEntry } from './SessionSummary';
 import { SessionSummary } from './SessionSummary';
+import { PlacementTest } from './PlacementTest';
 
 interface PracticeViewProps {
   progress: ProgressApi;
@@ -35,13 +36,14 @@ interface PracticeViewProps {
     suppress: (ms?: number) => void;
   };
   notify: Notify;
+  onNavigate: (tab: 'technique' | 'melody') => void;
 }
 
 type Phase = 'start' | 'intro' | 'running' | 'summary';
 
 const MAX_REQUEUE = 2;
 
-export function PracticeView({ progress, audio, mic, notify }: PracticeViewProps) {
+export function PracticeView({ progress, audio, mic, notify, onNavigate }: PracticeViewProps) {
   const { data, settings, unlockedNotes, newestNote, streak } = progress;
 
   const needsIntro = !!newestNote && !data.introSeen.includes(newestNote.id);
@@ -92,6 +94,7 @@ export function PracticeView({ progress, audio, mic, notify }: PracticeViewProps
     const unlocked = progress.finishSession(wrongCount);
     unlocked.forEach(a => notify(a.emoji, a.title, a.desc));
     if (wrongCount === 0 && logRef.current.length > 0) audio.playSuccess();
+    progress.recordStudyMinutes(Math.max(1, Math.ceil(logRef.current.length / 8)));
     setPhase('summary');
   }, [progress, notify, audio]);
 
@@ -144,6 +147,18 @@ export function PracticeView({ progress, audio, mic, notify }: PracticeViewProps
     const oct = parseNote(currentNote?.englishName ?? newestNote?.englishName ?? 'C4').octave;
     return { from: `C${oct}`, to: `B${oct + (settings.strictOctave ? 1 : 0)}` };
   }, [currentNote, newestNote, settings.strictOctave]);
+
+  if (!data.onboardingDone) {
+    return (
+      <PlacementTest
+        onComplete={score => {
+          progress.completePlacement(score);
+          const label = score <= 1 ? 'Fondamenta' : score <= 3 ? 'Lettura e ritmo' : 'Armonia e repertorio';
+          notify('🎓', `Percorso: ${label}`, `${score}/5 risposte corrette · puoi cambiare ritmo quando vuoi.`);
+        }}
+      />
+    );
+  }
 
   // ── Presentazione nota nuova ──────────────────────────────────────────────
   if (phase === 'intro' && newestNote) {
@@ -215,9 +230,44 @@ export function PracticeView({ progress, audio, mic, notify }: PracticeViewProps
 
   // ── Schermata di avvio ────────────────────────────────────────────────────
   const isFirstEver = data.answers === 0;
+  const minutes = data.studyMinutes[new Date().toLocaleDateString('sv-SE')] ?? 0;
+  const readingDone = progress.todayStat.answers >= Math.min(8, settings.dailyGoal);
+  const reviewDone = progress.due === 0 && progress.todayStat.answers > 0;
 
   return (
     <div className="flex flex-col gap-3">
+      <Card className="relative overflow-hidden border-brand/30 bg-gradient-to-br from-brand/20 via-surface to-surface">
+        <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-brand2/20 blur-2xl" />
+        <div className="relative">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Il tuo studio di oggi</p>
+          <div className="mt-2 flex items-end justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-black text-ink">Poco, bene, ogni giorno.</h1>
+              <p className="mt-1 text-sm text-ink2">Completa un passo alla volta: il prossimo è già scelto.</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-2xl font-black tabular-nums text-ink">{minutes}</p>
+              <p className="text-[10px] uppercase tracking-wide text-ink3">minuti</p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <div className={`rounded-xl border p-3 ${reviewDone ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-line bg-surface/70'}`}>
+              <p className="font-black text-ink">{reviewDone ? '✓ ' : '1 · '}Ripasso</p>
+              <p className="mt-0.5 text-ink3">{progress.due || 3} carte mirate</p>
+            </div>
+            <div className={`rounded-xl border p-3 ${readingDone ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-brand/30 bg-brand/10'}`}>
+              <p className="font-black text-ink">{readingDone ? '✓ ' : '2 · '}Lettura</p>
+              <p className="mt-0.5 text-ink3">8 risposte pulite</p>
+            </div>
+            <button type="button" onClick={() => onNavigate('technique')} className="rounded-xl border border-line bg-surface/70 p-3 text-left transition-colors hover:border-brand/50">
+              <p className="font-black text-ink">3 · Teoria</p><p className="mt-0.5 text-ink3">{progress.theoryDue.length > 0 ? `${progress.theoryDue.length} errori da riprendere` : 'una lezione breve'}</p>
+            </button>
+            <button type="button" onClick={() => onNavigate('melody')} className="rounded-xl border border-line bg-surface/70 p-3 text-left transition-colors hover:border-brand/50">
+              <p className="font-black text-ink">4 · Repertorio</p><p className="mt-0.5 text-ink3">una sezione lenta</p>
+            </button>
+          </div>
+        </div>
+      </Card>
       <Card className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -253,6 +303,30 @@ export function PracticeView({ progress, audio, mic, notify }: PracticeViewProps
             <Target className="h-4 w-4" />
             Allena le {weakIds.length} note più incerte
           </Btn>
+        )}
+      </Card>
+
+      <Card className="focus-hide">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-ink3">Piano reale</p>
+            <p className="mt-1 text-sm font-bold text-ink">Calibrazione microfono</p>
+          </div>
+          <Pill tone={mic.isListening ? (mic.level > 0.08 ? 'good' : 'warn') : 'neutral'}>
+            {mic.isListening ? (mic.level > 0.08 ? 'segnale pronto' : 'suona una nota') : 'tocca 🎤 in alto'}
+          </Pill>
+        </div>
+        {mic.isListening ? (
+          <div className="mt-3 space-y-2">
+            <Bar pct={Math.min(1, mic.level * 3.2)} color={mic.level > 0.08 ? 'bg-emerald-500' : 'bg-amber-500'} />
+            <div className="flex items-center justify-between text-xs text-ink2">
+              <span>{mic.liveNote ? `Rilevata: ${mic.liveNote.name}${mic.liveNote.octave}` : 'In ascolto…'}</span>
+              <span className="tabular-nums">livello {Math.round(mic.level * 100)}%</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-ink3">Prova tre note a volume normale. Se la barra resta bassa, avvicina il telefono; se resta piena anche nel silenzio, allontanalo.</p>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs leading-relaxed text-ink3">Accendi il microfono e suona tre note prima della sessione. L’app ti dirà se il segnale è abbastanza chiaro.</p>
         )}
       </Card>
 

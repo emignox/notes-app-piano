@@ -225,6 +225,18 @@ export function SettingsView({ progress, onTestSound }: SettingsViewProps) {
             ]}
           />
         </Row>
+        <Row title="Testo grande" desc="Aumenta testi e bersagli tattili senza ingrandire lo spartito.">
+          <Toggle on={settings.largeText} onChange={v => set('largeText', v)} />
+        </Row>
+        <Row title="Contrasto alto" desc="Rende più nette superfici, linee e stati corretti o sbagliati.">
+          <Toggle on={settings.highContrast} onChange={v => set('highContrast', v)} />
+        </Row>
+        <Row title="Riduci animazioni" desc="Evita movimenti non essenziali durante lo studio.">
+          <Toggle on={settings.reducedMotion} onChange={v => set('reducedMotion', v)} />
+        </Row>
+        <Row title="Modalità concentrazione" desc="Riduce decorazioni e informazioni secondarie negli esercizi.">
+          <Toggle on={settings.focusMode} onChange={v => set('focusMode', v)} />
+        </Row>
       </Card>
 
       <Card>

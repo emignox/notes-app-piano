@@ -30,6 +30,14 @@ export interface Settings {
   melodyBpm: number;
   metronome: boolean;
   volume: number;
+  /** Testi e bersagli tattili più grandi. */
+  largeText: boolean;
+  /** Contrasto rinforzato per linee, controlli e stati. */
+  highContrast: boolean;
+  /** Disattiva animazioni non essenziali anche senza preferenza di sistema. */
+  reducedMotion: boolean;
+  /** Durante gli esercizi nasconde informazioni secondarie. */
+  focusMode: boolean;
 }
 
 export const defaultSettings: Settings = {
@@ -48,6 +56,10 @@ export const defaultSettings: Settings = {
   melodyBpm: 90,
   metronome: false,
   volume: 0.8,
+  largeText: false,
+  highContrast: false,
+  reducedMotion: false,
+  focusMode: false,
 };
 
 export interface DayStat {
@@ -80,6 +92,13 @@ export interface Persisted {
   lessonsDone: string[];
   /** Risposte agli esercizi di teoria, per item: [giuste, totali]. */
   theory: Record<string, [number, number]>;
+  /** Valutazione iniziale completata e relativo punteggio (0–5). */
+  onboardingDone: boolean;
+  placementScore: number;
+  /** Minuti di attività registrati per giorno. */
+  studyMinutes: Record<string, number>;
+  /** Miglior risultato dei loop: chiave pezzo/sezione/mano → serie perfetta e BPM. */
+  pieceLoops: Record<string, { perfectRuns: number; bpm: number }>;
   settings: Settings;
 }
 
@@ -118,6 +137,10 @@ export function emptyState(): Persisted {
     introSeen: [],
     lessonsDone: [],
     theory: {},
+    onboardingDone: false,
+    placementScore: 0,
+    studyMinutes: {},
+    pieceLoops: {},
     settings: { ...defaultSettings },
   };
 }
@@ -153,6 +176,10 @@ export function load(): Persisted {
         introSeen: parsed.introSeen ?? [],
         lessonsDone: parsed.lessonsDone ?? [],
         theory: parsed.theory ?? {},
+        onboardingDone: parsed.onboardingDone ?? (parsed.answers ?? 0) > 0,
+        placementScore: parsed.placementScore ?? 0,
+        studyMinutes: parsed.studyMinutes ?? {},
+        pieceLoops: parsed.pieceLoops ?? {},
         settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
       };
     }

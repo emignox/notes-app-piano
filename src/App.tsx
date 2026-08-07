@@ -135,7 +135,7 @@ export default function App() {
 
         <Suspense fallback={<ViewFallback />}>
           {tab === 'practice' && (
-            <PracticeView progress={progress} audio={audio} mic={mic} notify={notify} />
+            <PracticeView progress={progress} audio={audio} mic={mic} notify={notify} onNavigate={setTab} />
           )}
           {tab === 'melody' &&
             (songSection === 'melodie' ? (

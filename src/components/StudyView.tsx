@@ -43,6 +43,7 @@ import { NoteKeyboard } from './NoteKeyboard';
 import { glossario } from '../data/glossario';
 import { useGlossario } from '../hooks/useGlossario';
 import { TechniqueView } from './TechniqueView';
+import { RhythmTrainer } from './RhythmTrainer';
 
 interface MicApi {
   isListening: boolean;
@@ -59,7 +60,7 @@ interface StudyViewProps {
   notify: Notify;
 }
 
-type Section = 'lezioni' | 'tecnica' | 'glossario';
+type Section = 'lezioni' | 'tecnica' | 'ritmo' | 'glossario';
 
 const XP_PER_LESSON = 40;
 
@@ -801,6 +802,7 @@ export function StudyView({ progress, audio, mic, notify }: StudyViewProps) {
         options={[
           { value: 'lezioni' as const, label: 'Lezioni' },
           { value: 'tecnica' as const, label: 'Tecnica' },
+          { value: 'ritmo' as const, label: 'Ritmo' },
           { value: 'glossario' as const, label: 'Glossario' },
         ]}
       />
@@ -828,6 +830,8 @@ export function StudyView({ progress, audio, mic, notify }: StudyViewProps) {
       {section === 'tecnica' && (
         <TechniqueView progress={progress} audio={audio} mic={mic} notify={notify} />
       )}
+
+      {section === 'ritmo' && <RhythmTrainer audio={audio} progress={progress} />}
 
       {section === 'glossario' && <Glossary audio={audio} mic={mic} />}
     </div>

@@ -32,14 +32,14 @@ export function TopBar({
   onTestAudio,
 }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md safe-top">
+    <header className="sticky top-0 z-20 border-b border-line/70 bg-canvas/82 shadow-sm backdrop-blur-xl safe-top">
       <div className="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2">
         <div className="flex items-center gap-2">
           <Ring pct={level.pct} size={36} stroke={3.5}>
             <span className="text-[11px] font-black text-ink">{level.level}</span>
           </Ring>
           <div className="hidden leading-tight sm:block">
-            <p className="text-xs font-bold text-ink">Piano Trainer</p>
+            <p className="text-xs font-black tracking-tight text-ink">Piano Trainer</p>
             <p className="text-[10px] text-ink3">{level.intoLevel}/{level.needed} XP</p>
           </div>
         </div>
@@ -95,7 +95,7 @@ export function TopBar({
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Music4 }[] = [
-  { id: 'practice', label: 'Pratica', icon: Music4 },
+  { id: 'practice', label: 'Oggi', icon: Music4 },
   { id: 'melody', label: 'Canzoni', icon: ListMusic },
   { id: 'technique', label: 'Studio', icon: BookOpen },
   { id: 'sprint', label: 'Sprint', icon: Zap },
@@ -105,8 +105,8 @@ const TABS: { id: Tab; label: string; icon: typeof Music4 }[] = [
 
 export function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur-md safe-bottom">
-      <div className="mx-auto flex max-w-2xl">
+    <nav className="fixed inset-x-0 bottom-0 z-20 px-2 pb-2 safe-bottom">
+      <div className="mx-auto flex max-w-2xl rounded-2xl border border-line/80 bg-surface/92 p-1 shadow-[0_-8px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = tab === id;
           return (
@@ -114,8 +114,8 @@ export function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => v
               key={id}
               type="button"
               onClick={() => onChange(id)}
-              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 transition-colors ${
-                active ? 'text-brand' : 'text-ink3'
+              className={`flex min-h-13 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl py-2 transition-all ${
+                active ? 'bg-brand/15 text-brand' : 'text-ink3 hover:bg-surface2 hover:text-ink2'
               }`}
             >
               <Icon className={`h-5 w-5 ${active ? 'scale-110' : ''} transition-transform`} />

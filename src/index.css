@@ -66,6 +66,29 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: none;
+  background-image:
+    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--c-brand) 16%, transparent), transparent 30rem),
+    radial-gradient(circle at 95% 25%, color-mix(in srgb, var(--c-brand2) 10%, transparent), transparent 26rem);
+  background-attachment: fixed;
+}
+
+:root[data-large-text="true"] { font-size: 112.5%; }
+
+:root[data-high-contrast="true"] {
+  --c-line: color-mix(in srgb, var(--c-ink) 42%, transparent);
+  --c-ink2: color-mix(in srgb, var(--c-ink) 82%, var(--c-canvas));
+  --c-ink3: color-mix(in srgb, var(--c-ink) 65%, var(--c-canvas));
+}
+
+:root[data-focus-mode="true"] .focus-hide { display: none !important; }
+
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
 
 #root { width: 100%; min-height: 100vh; }
@@ -73,6 +96,11 @@ body {
 button {
   -webkit-tap-highlight-color: transparent;
   font-family: inherit;
+}
+
+button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--c-brand) 70%, white);
+  outline-offset: 2px;
 }
 
 /* I comandi non si selezionano per sbaglio tenendo premuto sul telefono. */

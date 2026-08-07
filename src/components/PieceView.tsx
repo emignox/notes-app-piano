@@ -43,6 +43,7 @@ import { GrandStaff } from './GrandStaff';
 import { PianoKeyboard } from './PianoKeyboard';
 
 import type { SongSection } from './MelodyView';
+import { AdvancedChopinView } from './AdvancedChopinView';
 
 interface PieceViewProps {
   section: SongSection;
@@ -100,12 +101,34 @@ function PieceChallenge({
     () => (piece.sections?.length ? [...piece.sections, wholePiece(piece)] : [wholePiece(piece)]),
     [piece],
   );
+  const measures = useMemo(() => splitMeasures(piece), [piece]);
 
   const [hand, setHand] = useState<Hand>('right');
   // Si comincia dalla prima sezione, non dal pezzo intero: è il consiglio che
   // daremmo a voce, quindi è anche il valore predefinito.
   const [partIdx, setPartIdx] = useState(0);
-  const part = parts[Math.min(partIdx, parts.length - 1)];
+  const [loopBars, setLoopBars] = useState<0 | 1 | 2 | 4>(0);
+  const [loopMeasure, setLoopMeasure] = useState(0);
+  const basePart = parts[Math.min(partIdx, parts.length - 1)];
+  const availableMeasures = useMemo(
+    () => measures.filter(m => (m.indices[0] ?? -1) >= basePart.from && (m.indices[0] ?? -1) < basePart.to),
+    [measures, basePart],
+  );
+  const part = useMemo<PieceSection>(() => {
+    if (loopBars === 0 || availableMeasures.length === 0) return basePart;
+    const startPos = Math.min(loopMeasure, availableMeasures.length - 1);
+    const chosen = availableMeasures.slice(startPos, startPos + loopBars);
+    const first = chosen[0];
+    const last = chosen[chosen.length - 1];
+    const from = first?.indices[0] ?? basePart.from;
+    const to = (last?.indices[last.indices.length - 1] ?? from) + 1;
+    return {
+      name: `Batt. ${first?.number ?? 1}${chosen.length > 1 ? `–${last?.number ?? first?.number}` : ''}`,
+      from,
+      to,
+      note: `Loop mirato di ${chosen.length} ${chosen.length === 1 ? 'battuta' : 'battute'}. Ripetilo pulito due volte prima di accelerare.`,
+    };
+  }, [loopBars, loopMeasure, availableMeasures, basePart]);
 
   const [idx, setIdx] = useState(part.from);
   const [found, setFound] = useState<string[]>([]);
@@ -117,6 +140,9 @@ function PieceChallenge({
   const [showKeys, setShowKeys] = useState(false);
   const [fingering, setFingering] = useState(true);
   const [done, setDone] = useState(false);
+  const [smartLoop, setSmartLoop] = useState(true);
+  const [suggestedBpm, setSuggestedBpm] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
   // Il tasto sbagliato va evidenziato SOLO sulla tastiera su cui è stato premuto:
   // le due estensioni si sovrappongono e altrimenti si accendono entrambe.
   const [wrong, setWrong] = useState<{ note: string; hand: 'right' | 'left' } | null>(null);
@@ -127,7 +153,6 @@ function PieceChallenge({
 
   const rightRange = useMemo(() => rangeFor(pieceNotes(piece, 'right'), 'C4'), [piece]);
   const leftRange = useMemo(() => rangeFor(pieceNotes(piece, 'left'), 'C3'), [piece]);
-  const measures = useMemo(() => splitMeasures(piece), [piece]);
   const tonality = useMemo(() => keyInfo(piece.key.tonic, piece.key.mode), [piece]);
 
   const step = piece.steps[idx];
@@ -139,12 +164,13 @@ function PieceChallenge({
 
   const total = part.to - part.from;
   const doneCount = Math.max(0, idx - part.from);
+  const stopSequence = audio.stopSequence;
 
   const stopListening = useCallback(() => {
-    audio.stopSequence();
+    stopSequence();
     setPlaying(false);
     setPlayingIdx(null);
-  }, [audio]);
+  }, [stopSequence]);
 
   /**
    * L'ascolto usa l'esecuzione interpretata: legature, staccati, dinamiche e
@@ -186,11 +212,17 @@ function PieceChallenge({
       const whole = part.to - part.from === piece.steps.length;
       const key = whole ? `piece:${piece.id}:${hand}` : `piece:${piece.id}:${hand}:${part.name}`;
       const unlocked = progress.recordMelody(key, pct);
+      if (smartLoop) {
+        const loopKey = `${piece.id}:${part.name}:${hand}`;
+        const next = progress.recordPieceLoop(loopKey, pct === 100, bpm);
+        setSuggestedBpm(next);
+      }
+      progress.recordStudyMinutes(Math.max(1, Math.ceil(slice.length / 24)));
       unlocked.forEach(a => notify(a.emoji, a.title, a.desc));
       if (pct === 100) audio.playSuccess();
       setDone(true);
     },
-    [piece.id, piece.steps.length, hand, part, progress, notify, audio],
+    [piece.id, piece.steps.length, hand, part, progress, notify, audio, smartLoop, bpm],
   );
 
   const goToStep = useCallback(
@@ -202,6 +234,7 @@ function PieceChallenge({
       setIdx(next);
       setFound([]);
       setWrong(null);
+      setFeedback(null);
       setShowKeys(false);
       stepErrorRef.current = false;
     },
@@ -250,6 +283,13 @@ function PieceChallenge({
         // Il tasto sbagliato diventa rosso: è tutto il responso che serve
         // mentre si suona.
         setWrong({ note: toneNote, hand: fromMic ? (hand === 'left' ? 'left' : 'right') : source });
+        const expected = missing[0];
+        if (expected) {
+          const delta = midiOf(toneNote) - midiOf(expected);
+          const distance = Math.abs(delta);
+          const relation = distance === 0 ? 'nell’ottava sbagliata' : `${distance} ${distance === 1 ? 'semitono' : 'semitoni'} ${delta > 0 ? 'sopra' : 'sotto'}`;
+          setFeedback(`Hai suonato ${italianOf(toneNote)}; serve ${italianOf(expected)} (${relation}).`);
+        }
         if (!fromMic) {
           // Solo rispondendo a schermo: il verso d'errore aiuta. Suonando
           // interromperebbe la musica, e i 700 ms di sordità che servono a non
@@ -267,6 +307,7 @@ function PieceChallenge({
       }
       const nextFound = [...found, target];
       setFound(nextFound);
+      setFeedback(null);
       haptics.tap();
       if (nextFound.length >= required.length) completeStep();
     },
@@ -292,6 +333,8 @@ function PieceChallenge({
       setMistakes(0);
       setDone(false);
       setShowKeys(false);
+      setFeedback(null);
+      setSuggestedBpm(null);
       stepErrorRef.current = false;
     },
     [piece.steps, stopListening],
@@ -299,8 +342,18 @@ function PieceChallenge({
 
   const switchHand = useCallback((h: Hand) => { setHand(h); reset(part.from); }, [reset, part.from]);
   const switchPart = useCallback(
-    (i: number) => { setPartIdx(i); reset(parts[i].from); },
+    (i: number) => { setLoopBars(0); setLoopMeasure(0); setPartIdx(i); reset(parts[i].from); },
     [reset, parts],
+  );
+
+  const switchLoop = useCallback(
+    (bars: 0 | 1 | 2 | 4, measurePos = loopMeasure) => {
+      setLoopBars(bars);
+      setLoopMeasure(measurePos);
+      if (bars === 0) reset(basePart.from);
+      else reset(availableMeasures[Math.min(measurePos, availableMeasures.length - 1)]?.indices[0] ?? basePart.from);
+    },
+    [loopMeasure, reset, basePart.from, availableMeasures],
   );
 
   useEffect(() => stopListening, [stopListening]);
@@ -325,6 +378,15 @@ function PieceChallenge({
           <p className="text-sm text-ink2">
             {pct}% · {mistakes} {mistakes === 1 ? 'errore' : 'errori'}
           </p>
+          {smartLoop && suggestedBpm !== null && (
+            <Panel className="w-full px-4 py-3 text-sm text-ink2">
+              {suggestedBpm > bpm
+                ? `Due esecuzioni pulite: il prossimo giro sale con calma a ${suggestedBpm} BPM.`
+                : pct === 100
+                ? `Ottimo primo giro a ${bpm} BPM. Ripetilo ancora una volta prima di accelerare.`
+                : `Resta a ${bpm} BPM: prima rendiamo stabile il passaggio, poi acceleriamo.`}
+            </Panel>
+          )}
           {hand !== 'both' ? (
             <Panel className="w-full px-4 py-3 text-xs leading-relaxed text-ink2">
               Prossimo passo: {hand === 'right' ? 'la stessa parte con la mano sinistra' : 'le due mani insieme'},
@@ -337,7 +399,9 @@ function PieceChallenge({
             </Panel>
           ) : null}
           <div className="flex flex-wrap justify-center gap-2.5">
-            <Btn variant="soft" onClick={() => reset(part.from)}>Riprova</Btn>
+            <Btn variant="soft" onClick={() => { if (suggestedBpm) setBpm(suggestedBpm); reset(part.from); }}>
+              {suggestedBpm && suggestedBpm > bpm ? `Ripeti a ${suggestedBpm} BPM` : 'Riprova il loop'}
+            </Btn>
             {hand !== 'both' && (
               <Btn onClick={() => switchHand(hand === 'right' ? 'left' : 'both')}>
                 {hand === 'right' ? 'Mano sinistra' : 'Insieme'}
@@ -388,6 +452,32 @@ function PieceChallenge({
           ))}
         </div>
       )}
+
+      <div className="rounded-2xl border border-line bg-surface2 p-2.5">
+        <div className="flex items-center gap-1.5">
+          <span className="mr-auto text-[11px] font-black uppercase tracking-wide text-ink3">Loop battute</span>
+          {([0, 1, 2, 4] as const).map(n => (
+            <button key={n} type="button" onClick={() => switchLoop(n)} className={`rounded-lg px-2.5 py-1.5 text-xs font-bold ${loopBars === n ? 'bg-brand text-white' : 'bg-surface text-ink2'}`}>
+              {n === 0 ? 'Sezione' : n}
+            </button>
+          ))}
+        </div>
+        {loopBars > 0 && availableMeasures.length > 1 && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[10px] text-ink3">inizio</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, availableMeasures.length - loopBars)}
+              value={Math.min(loopMeasure, Math.max(0, availableMeasures.length - loopBars))}
+              onChange={e => switchLoop(loopBars, Number(e.target.value))}
+              className="w-full accent-[var(--c-brand)]"
+              aria-label="Battuta iniziale del loop"
+            />
+            <span className="min-w-12 text-right text-[10px] font-bold text-ink2">{part.name}</span>
+          </div>
+        )}
+      </div>
 
       {/* Selettore della mano: il cuore del metodo */}
       <div className="flex gap-1.5">
@@ -441,6 +531,17 @@ function PieceChallenge({
         </div>
       </div>
 
+      <button
+        type="button"
+        role="switch"
+        aria-checked={smartLoop}
+        onClick={() => setSmartLoop(v => !v)}
+        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs ${smartLoop ? 'border-brand/40 bg-brand/10' : 'border-line bg-surface2'}`}
+      >
+        <span><b className="text-ink">Loop intelligente</b><span className="ml-1 text-ink3">2 giri puliti → +4 BPM</span></span>
+        <span className={`h-2.5 w-2.5 rounded-full ${smartLoop ? 'bg-brand' : 'bg-ink3'}`} />
+      </button>
+
       <GrandStaff
         piece={piece}
         activeIndex={playingIdx ?? idx}
@@ -466,6 +567,7 @@ function PieceChallenge({
               : `${found.length}/${required.length} note dell'accordo`}
           </p>
           {advice && <p className="mt-0.5 text-[11px] leading-snug text-brand">{advice}</p>}
+          {feedback && <p className="mt-1 text-xs font-semibold leading-snug text-red-400">{feedback}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <button
@@ -562,6 +664,8 @@ export function PieceView({ progress, audio, mic, notify, section, onSection }: 
           { value: 'pezzi', label: 'Due mani' },
         ]}
       />
+
+      <AdvancedChopinView audio={audio} />
       <Panel className="px-4 py-3 text-xs leading-relaxed text-ink2">
         Doppio pentagramma: sopra la mano destra, sotto la sinistra. Sono pagine intere, quindi si
         studiano <b>una sezione per volta</b> e <b>una mano per volta</b> — con il tempo abbassato

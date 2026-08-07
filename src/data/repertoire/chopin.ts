@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { p, s } from '../kit';
-import type { Piece } from '../../types';
+import type { Piece, PieceStep } from '../../types';
 
 // Accordi ricorrenti della sinistra del Valzer in la minore.
 const LA_MIN = ['A3', 'C4', 'E4'];
@@ -24,6 +24,36 @@ const DO_MAG = ['G3', 'C4', 'E4'];
 const MI7 = ['E3', 'B3', 'D4'];
 const MI7S = ['E3', 'G#3', 'D4'];
 const LA_MIN6 = ['E3', 'A3', 'C4'];
+
+/**
+ * Una battuta di moto continuo semplificato. Le due mani avanzano insieme a
+ * semicrome: una nota ripetuta nella destra viene legata, così può diventare
+ * un accordo tenuto sopra una cascata della sinistra.
+ */
+function flowBar(
+  right: (string | string[] | undefined)[],
+  left: (string | string[] | undefined)[],
+  options: { dyn?: 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff'; text?: string; final?: boolean } = {},
+): PieceStep[] {
+  return Array.from({ length: 16 }, (_, i) => {
+    const r = right[i % right.length];
+    const l = left[i % left.length];
+    const nextR = right[(i + 1) % right.length];
+    const sameR = JSON.stringify(r) === JSON.stringify(nextR);
+    return s('16', r, l, {
+      dyn: i === 0 ? options.dyn : undefined,
+      text: i === 0 ? options.text : undefined,
+      leg: !sameR && i < 15,
+      tie: sameR && i < 15,
+      legL: i < 15,
+      fin: i === 0 ? (Array.isArray(r) ? r.map((_, n) => Math.min(5, n + 1)) : 1) : undefined,
+      finL: i === 0 ? 5 : undefined,
+      bar: options.final && i === 15 ? 'end' : undefined,
+    });
+  });
+}
+
+const held = (notes: string | string[]): (string | string[])[] => Array.from({ length: 16 }, () => notes);
 
 export const chopin: Piece[] = [
   // ───────────────────────────────────────────────────────────────────────────
@@ -826,4 +856,101 @@ export const chopin: Piece[] = [
       s('wd', ['Bb4', 'Eb5', 'G5'], ['Eb2', 'Eb3'], { dyn: 'p', artB: 'fermata', fin: [1, 2, 5], finL: [5, 1], ped: 'down', bar: 'end' }),
     ],
   }),
-];
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Tre edizioni studio: conservano il gesto e i temi riconoscibili, riducendo
+  // densità, estensione e poliritmia. Non sostituiscono le partiture originali.
+  // ───────────────────────────────────────────────────────────────────────────
+  p({
+    id: 'chopin-op10-12-study',
+    title: 'Studio “Rivoluzionario” · edizione studio',
+    composer: 'F. Chopin · adattamento didattico',
+    difficulty: 'difficile',
+    level: 20,
+    emoji: '🌪️',
+    bpm: 56,
+    meter: '4/4',
+    key: { tonic: 'C', mode: 'minore' },
+    tempoText: 'Allegro con fuoco, molto lento nello studio',
+    hint: 'La destra tiene il grido armonico; la sinistra scorre senza irrigidirsi. Parti a 40 BPM in loop di una battuta.',
+    about: 'Edizione studio breve dello Studio op. 10 n. 12: mantiene la celebre cascata della sinistra e i pilastri armonici, con estensione e densità ridotte.',
+    focus: ['sinistra continua e leggera', 'accordi tenuti nella destra', 'accento sul primo movimento', 'crescita graduale del tempo'],
+    sections: [
+      { name: 'Grido iniziale', from: 0, to: 32, note: 'Due battute: accordi fermi sopra la prima discesa. Prima studia soltanto la sinistra.' },
+      { name: 'Cascata', from: 32, to: 96, note: 'La figura cambia armonia ma conserva lo stesso gesto circolare.' },
+      { name: 'Ritorno', from: 96, to: 128, note: 'Torna il Do minore e chiudi senza accelerare.' },
+    ],
+    steps: [
+      ...flowBar(held(['G4', 'C5', 'Eb5']), ['C4','G3','Eb3','C3','G2','C3','Eb3','G3','Bb3','G3','Eb3','C3','G2','C3','Eb3','G3'], { dyn: 'f', text: 'con fuoco' }),
+      ...flowBar(held(['G4', 'B4', 'F5']), ['B3','G3','D3','B2','G2','B2','D3','G3','Ab3','F3','D3','B2','G2','B2','D3','F3'], { dyn: 'mf' }),
+      ...flowBar(held(['Ab4', 'C5', 'F5']), ['F3','C3','Ab2','F2','C3','F3','Ab3','C4','Db4','C4','Ab3','F3','C3','F3','Ab3','C4'], { dyn: 'f' }),
+      ...flowBar(held(['G4', 'C5', 'Eb5']), ['Eb4','C4','G3','Eb3','C3','Eb3','G3','C4','D4','B3','G3','D3','B2','D3','G3','B3']),
+      ...flowBar(held(['F4', 'Ab4', 'D5']), ['D4','B3','F3','D3','B2','D3','F3','B3','C4','Ab3','F3','D3','B2','D3','F3','Ab3'], { dyn: 'ff', text: 'sempre più intenso' }),
+      ...flowBar(held(['G4', 'B4', 'F5']), ['G3','D3','B2','G2','D3','G3','B3','D4','F4','D4','B3','G3','D3','G3','B3','D4']),
+      ...flowBar(held(['G4', 'C5', 'Eb5']), ['C4','G3','Eb3','C3','G2','C3','Eb3','G3','C4','G3','Eb3','C3','G2','C3','Eb3','G3'], { dyn: 'f', text: 'Tempo I' }),
+      ...flowBar(held(['G4', 'C5', 'Eb5']), ['C4','Eb3','G3','C3','G2','C3','Eb3','G3','C4','G3','Eb3','C3','G2','C3','Eb3','C3'], { dyn: 'mf', text: 'rit. e deciso', final: true }),
+    ],
+  }),
+
+  p({
+    id: 'chopin-op10-4-study',
+    title: 'Studio “Torrent” · edizione studio',
+    composer: 'F. Chopin · adattamento didattico',
+    difficulty: 'difficile',
+    level: 21,
+    emoji: '🔥',
+    bpm: 60,
+    meter: '4/4',
+    key: { tonic: 'C#', mode: 'minore' },
+    tempoText: 'Presto con fuoco, preparazione lenta',
+    hint: 'Non cercare velocità: gruppi di quattro note, polso libero e accento solo sulla prima. Aumenta quando due loop sono puliti.',
+    about: 'Edizione studio dello Studio op. 10 n. 4: il moto perpetuo passa fra le mani, ma le posizioni sono raccolte e le sequenze accorciate.',
+    focus: ['gruppi di quattro semicrome', 'passaggio del moto fra le mani', 'mano vicina ai tasti', 'accenti senza irrigidire'],
+    sections: [
+      { name: 'Scintilla', from: 0, to: 32, note: 'Il nucleo di quattro note. Fermati dopo ogni gruppo prima di unirli.' },
+      { name: 'Scambio', from: 32, to: 96, note: 'Il disegno passa fra le mani: ascolta sempre la prima nota del gruppo.' },
+      { name: 'Coda', from: 96, to: 128, note: 'Stessa energia, ma nessuna corsa nel finale.' },
+    ],
+    steps: [
+      ...flowBar(['C#5','G#4','E5','C#5','D#5','B4','F#5','D#5'], ['C#3','G#3','C#4','G#3','B2','F#3','B3','F#3'], { dyn: 'f', text: 'marcato il primo di quattro' }),
+      ...flowBar(['E5','C#5','G#5','E5','F#5','D#5','A5','F#5'], ['A2','E3','A3','E3','G#2','D#3','G#3','D#3'], { dyn: 'mf' }),
+      ...flowBar(['G#5','E5','B5','G#5','A5','F#5','C#6','A5'], ['E3','B3','E4','B3','D#3','A3','D#4','A3'], { dyn: 'f' }),
+      ...flowBar(['F#5','D#5','A5','F#5','E5','C#5','G#5','E5'], ['B2','F#3','B3','F#3','C#3','G#3','C#4','G#3']),
+      ...flowBar(['D#5','B4','F#5','D#5','C#5','G#4','E5','C#5'], ['G#2','D#3','G#3','D#3','A2','E3','A3','E3'], { dyn: 'mf', text: 'la sinistra prende il gesto' }),
+      ...flowBar(['E5','B4','G#5','E5','D#5','A4','F#5','D#5'], ['C#3','G#3','E4','G#3','B2','F#3','D#4','F#3']),
+      ...flowBar(['C#5','G#4','E5','C#5','G#5','E5','C#6','G#5'], ['C#3','G#3','C#4','G#3','E3','B3','E4','B3'], { dyn: 'f', text: 'con fuoco' }),
+      ...flowBar([['C#5','E5'],['D#5','F#5'],['E5','G#5'],['F#5','A5']], ['C#3','G#3','C#4','E4'], { dyn: 'ff', text: 'non accelerare', final: true }),
+    ],
+  }),
+
+  p({
+    id: 'chopin-op66-study',
+    title: 'Fantaisie-Impromptu op. 66 · edizione studio',
+    composer: 'F. Chopin · adattamento didattico',
+    difficulty: 'difficile',
+    level: 22,
+    emoji: '🌙',
+    bpm: 54,
+    meter: '4/4',
+    key: { tonic: 'C#', mode: 'minore' },
+    tempoText: 'Allegro agitato, senza poliritmia',
+    hint: 'La versione originale sovrappone quattro note contro tre. Qui le mani condividono una griglia: impara prima la forma degli arpeggi e il canto centrale.',
+    about: 'Edizione studio compatta della Fantaisie-Impromptu op. 66: arpeggio iniziale e episodio cantabile sono riconoscibili, con il 4 contro 3 ridotto a una pulsazione comune.',
+    focus: ['arpeggi regolari e leggeri', 'melodia in cima alla mano', 'contrasto agitato/cantabile', 'pedale cambiato con l’armonia'],
+    sections: [
+      { name: 'Agitato', from: 0, to: 64, note: 'Arpeggi raccolti: studia a gruppi di quattro, poi unisci la battuta.' },
+      { name: 'Canto', from: 64, to: 96, note: 'Fai emergere la melodia e lascia morbido l’accompagnamento.' },
+      { name: 'Ritorno', from: 96, to: 128, note: 'Il moto iniziale ritorna più piano e si spegne.' },
+    ],
+    steps: [
+      ...flowBar(['G#4','C#5','E5','G#5','C#5','E5','G#5','C#6'], ['C#3','G#3','C#4','E4','G#3','C#4','E4','G#4'], { dyn: 'p', text: 'sotto voce e leggero' }),
+      ...flowBar(['A4','C#5','F#5','A5','C#5','F#5','A5','C#6'], ['F#2','C#3','F#3','A3','C#3','F#3','A3','C#4']),
+      ...flowBar(['G#4','B4','E5','G#5','B4','E5','G#5','B5'], ['E3','B3','E4','G#4','B3','E4','G#4','B4'], { dyn: 'mf' }),
+      ...flowBar(['F#4','A4','D#5','F#5','A4','D#5','F#5','A5'], ['D#3','A3','D#4','F#4','A3','D#4','F#4','A4'], { text: 'crescendo' }),
+      ...flowBar(held('F5'), ['Db3','Ab3','Db4','F4','Ab3','Db4','F4','Ab4'], { dyn: 'p', text: 'Moderato cantabile' }),
+      ...flowBar(['F5','Ab5','F5','Eb5','Db5','Eb5','F5','Ab5'], ['Bb2','F3','Bb3','Db4','F3','Bb3','Db4','F4'], { dyn: 'pp' }),
+      ...flowBar(['G#4','C#5','E5','G#5','C#5','E5','G#5','C#6'], ['C#3','G#3','C#4','E4','G#3','C#4','E4','G#4'], { dyn: 'p', text: 'Tempo I' }),
+      ...flowBar(['E5','C#5','G#4','E4'], ['C#3','G#3','C#4','E4'], { dyn: 'pp', text: 'smorzando', final: true }),
+    ],
+  }),
+].filter(piece => !piece.id.endsWith('-study'));
