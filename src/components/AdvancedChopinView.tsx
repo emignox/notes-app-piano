@@ -69,6 +69,7 @@ function MusicScore({ piece, cursor, hand }: { piece: AdvancedPiece; cursor: num
   useEffect(() => {
     const osmd = engine.current; if (!osmd) return;
     const latest = (values: number[]) => values.findLast(value => value <= cursor) ?? 0;
+    const rightBeat = latest(onsets.right), leftBeat = latest(onsets.left);
     const moveToBeat = (scoreCursor: typeof osmd.cursor, beat: number) => {
       const currentBeat = scoreCursor.iterator.CurrentSourceTimestamp.RealValue * 4;
       if (currentBeat > beat) scoreCursor.reset();
@@ -76,16 +77,16 @@ function MusicScore({ piece, cursor, hand }: { piece: AdvancedPiece; cursor: num
     };
     const [rightCursor, leftCursor] = osmd.cursors;
     if (rightCursor) {
-      if (hand === 'left') rightCursor.hide(); else rightCursor.show(); moveToBeat(rightCursor, latest(onsets.right));
+      if (hand === 'left') rightCursor.hide(); else rightCursor.show(); moveToBeat(rightCursor, rightBeat);
       emphasizeCursor(rightCursor, '#2563eb', -8, 50);
     }
     if (leftCursor) {
-      if (hand === 'right') leftCursor.hide(); else leftCursor.show(); moveToBeat(leftCursor, latest(onsets.left));
+      if (hand === 'right') leftCursor.hide(); else leftCursor.show(); moveToBeat(leftCursor, leftBeat);
       emphasizeCursor(leftCursor, '#9333ea', 8, 51);
     }
     // Il follow nativo di OSMD usa window.scrollTo e sul telefono porta via i
     // comandi. Qui si muove esclusivamente il riquadro bianco della partitura.
-    const followed = hand === 'left' ? leftCursor : rightCursor;
+    const followed = hand === 'left' ? leftCursor : hand === 'right' ? rightCursor : leftBeat > rightBeat ? leftCursor : rightCursor;
     if (followed && viewport.current) {
       const box = viewport.current, marker = followed.cursorElement;
       requestAnimationFrame(() => {
@@ -98,7 +99,7 @@ function MusicScore({ piece, cursor, hand }: { piece: AdvancedPiece; cursor: num
   return <div ref={viewport} className="relative max-h-[58dvh] w-full max-w-full overscroll-contain overflow-auto rounded-2xl border border-line bg-white p-1 shadow-inner sm:max-h-[68vh] sm:p-2" aria-label="Partitura completa su doppio pentagramma">
     {loading && <div className="grid min-h-56 place-items-center text-sm font-bold text-slate-600">Sto preparando la partitura…</div>}
     {error && <div className="grid min-h-56 place-items-center text-sm font-bold text-red-700">Impossibile caricare la partitura.</div>}
-    <div ref={host} className="w-full min-w-0 [&>svg]:max-w-full" />
+    <div ref={host} className="w-full min-w-[560px] sm:min-w-0 sm:[&>svg]:max-w-full" />
   </div>;
 }
 

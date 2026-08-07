@@ -77,9 +77,13 @@ export function useAudio(volume = 0.8) {
     setRunning(contextState() === 'running');
 
     // Ripiego sempre pronto: se i campioni tardano, il suono c'è comunque.
-    const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.008, decay: 0.9, sustain: 0.12, release: 1.1 },
+    const synth = new Tone.PolySynth({
+      maxPolyphony: 64,
+      voice: Tone.Synth,
+      options: {
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.008, decay: 0.9, sustain: 0.12, release: 1.1 },
+      },
     }).toDestination();
     synth.volume.value = -8;
     synthRef.current = synth;
@@ -331,34 +335,38 @@ export function useAudio(volume = 0.8) {
         if (playbackId !== playbackIdRef.current) return;
         const v = voice();
         if (!v || events.length === 0) return;
-        const lead = 0.08;
-
-        events.forEach(e => {
-          timersRef.current.push(setTimeout(() => {
-            if (playbackId !== playbackIdRef.current) return;
+        // Non creare migliaia di timeout: sui telefoni il rendering della
+        // partitura può ritardare il thread JS e far partire blocchi di note
+        // tutti insieme. Prepariamo invece 300 ms alla volta sull'orologio
+        // Web Audio, che continua preciso anche durante scroll e layout.
+        const ordered = [...events].sort((a, b) => a.at - b.at);
+        const lead = 0.12, lookAhead = 0.3;
+        const startedAt = performance.now() / 1000 + lead;
+        const last = ordered.reduce((m, e) => Math.max(m, e.at + e.hold), 0);
+        let eventIndex = 0, stepIndex = 0, finished = false;
+        const schedule = () => {
+          if (playbackId !== playbackIdRef.current || finished) return;
+          const elapsed = performance.now() / 1000 - startedAt;
+          const audioNow = Tone.now();
+          while (eventIndex < ordered.length && ordered[eventIndex].at <= elapsed + lookAhead) {
+            const e = ordered[eventIndex++];
             try {
-              v.triggerAttackRelease(e.notes, Math.max(0.08, e.hold), undefined, e.velocity);
+              const when = audioNow + Math.max(0.015, e.at - elapsed);
+              v.triggerAttackRelease(e.notes, Math.max(0.08, e.hold), when, e.velocity);
             } catch {
               /* una nota fuori range non deve fermare l'esecuzione */
             }
-          }, (lead + e.at) * 1000));
-        });
-
-        // Il cursore si muove sui PASSI, non sugli eventi: in un passo dove una
-        // mano tace non c'è nessun evento, ma il tempo scorre lo stesso.
-        if (onStep) {
-          stepTimes.forEach((t, i) => {
-            timersRef.current.push(setTimeout(() => {
-              if (playbackId === playbackIdRef.current) onStep(i);
-            }, (lead + t) * 1000));
-          });
-        }
-        if (onEnd) {
-          const last = events.reduce((m, e) => Math.max(m, e.at + e.hold), 0);
-          timersRef.current.push(setTimeout(() => {
-            if (playbackId === playbackIdRef.current) onEnd();
-          }, (lead + last) * 1000 + 150));
-        }
+          }
+          if (onStep) while (stepIndex < stepTimes.length && stepTimes[stepIndex] <= elapsed) onStep(stepIndex++);
+          if (elapsed >= last + .15) {
+            finished = true;
+            clearInterval(scheduler);
+            if (playbackId === playbackIdRef.current) onEnd?.();
+          }
+        };
+        const scheduler = setInterval(schedule, 40);
+        timersRef.current.push(scheduler);
+        schedule();
       });
     },
     [voice, clearTimers, withAudio],
