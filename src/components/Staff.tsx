@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef } from 'react';
-import { Accidental, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow';
+import { Accidental, Annotation, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow';
 import type { AnswerState, NoteEntry, NoteResult } from '../types';
 import { staffSlot } from '../lib/notes';
 
@@ -55,13 +55,42 @@ function colorFor(
   return GHOST;
 }
 
-function buildNote(entry: NoteEntry, color: string, duration: string): StaveNote {
+const VEX_ACCIDENTAL: Record<NonNullable<NoteEntry['accidental']>, string> = {
+  sharp: '#', flat: 'b', natural: 'n', 'double-sharp': '##', 'double-flat': 'bb',
+};
+
+/**
+ * Scrive il nome della nota sotto di essa, piccolo e in rosso.
+ * Serve quando si sbaglia: al posto di un riquadro che occupa spazio e tempo,
+ * l'informazione sta dov'è il problema — sul pentagramma, accanto alla nota —
+ * e ci resta, così la si può guardare senza dover interrompere l'esecuzione.
+ */
+function addNameLabel(sn: StaveNote, text: string, color: string) {
+  const a = new Annotation(text);
+  a.setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
+  a.setStyle({ fillStyle: color, strokeStyle: color });
+  sn.addModifier(a, 0);
+}
+
+/**
+ * Marca i nomi delle note dopo il disegno. VexFlow non porta le classi fin
+ * dentro l'SVG, e il foglio di stile impone il carattere musicale a TUTTI i
+ * testi: senza questo aggancio il nome uscirebbe in Bravura, grande e storto.
+ */
+function tagNameLabels(container: HTMLElement, labels: Set<string>) {
+  if (labels.size === 0) return;
+  container.querySelectorAll('text').forEach(t => {
+    if (labels.has((t.textContent ?? '').trim())) t.setAttribute('class', 'nota-nome');
+  });
+}
+
+function buildNote(entry: NoteEntry, color: string, duration: string, label?: string): StaveNote {
   const sn = new StaveNote({ keys: [entry.vexflowKey], duration, clef: entry.clef });
   if (entry.accidental) {
-    const sym = entry.accidental === 'sharp' ? '#' : entry.accidental === 'flat' ? 'b' : 'n';
-    sn.addModifier(new Accidental(sym), 0);
+    sn.addModifier(new Accidental(VEX_ACCIDENTAL[entry.accidental]), 0);
   }
   sn.setStyle({ fillStyle: color, strokeStyle: color });
+  if (label) addNameLabel(sn, label, color);
   return sn;
 }
 
@@ -123,7 +152,7 @@ function FocusStaff({ entry, answerState }: { entry: NoteEntry; answerState: Ans
     stave.setContext(ctx).draw();
 
     const color = answerState === 'correct' ? GOOD : answerState === 'wrong' ? BAD : INK;
-    const note = buildNote(entry, color, 'w');
+    const note = buildNote(entry, color, 'w', answerState === 'wrong' ? entry.displayName : undefined);
 
     // Le note partono dal centro del pentagramma: la carta è una nota sola e al
     // centro si legge meglio che appiccicata alla chiave.
@@ -134,6 +163,7 @@ function FocusStaff({ entry, answerState }: { entry: NoteEntry; answerState: Ans
     new Formatter().joinVoices([voice]).format([voice], 40);
     voice.draw(ctx, stave);
 
+    if (answerState === 'wrong') tagNameLabels(container, new Set([entry.displayName]));
     makeResponsive(container, FOCUS_W, height);
     return () => { container.innerHTML = ''; };
   }, [entry, answerState, height, staveY]);
@@ -204,7 +234,15 @@ function SequenceStaff({
     const drawGroup = (group: { note: NoteEntry; idx: number }[], stave: Stave) => {
       if (group.length === 0) return;
       const notes = group.map(({ note, idx }) =>
-        buildNote(note, colorFor(idx, activeIndex, results, answerState), durations?.[idx] ?? 'q'),
+        buildNote(
+          note,
+          colorFor(idx, activeIndex, results, answerState),
+          durations?.[idx] ?? 'q',
+          // Solo dove si è sbagliato: sulle altre sarebbe la risposta servita.
+          results[idx] === 'wrong' || (idx === activeIndex && answerState === 'wrong')
+            ? note.displayName
+            : undefined,
+        ),
       );
       const total = group.reduce((sum, { idx }) => sum + beats(durations?.[idx] ?? 'q'), 0);
       const voice = new Voice({ numBeats: Math.max(1, Math.ceil(total)), beatValue: 4 }).setMode(Voice.Mode.SOFT);
@@ -237,6 +275,16 @@ function SequenceStaff({
       drawGroup(trebleEntries, treble);
       drawGroup(bassEntries, bass);
     }
+
+    // I nomi scritti sotto le note sbagliate vanno resi testo normale.
+    tagNameLabels(
+      container,
+      new Set(
+        entries
+          .filter((_, idx) => results[idx] === 'wrong' || (idx === activeIndex && answerState === 'wrong'))
+          .map(e => e.displayName),
+      ),
+    );
 
     return () => { container.innerHTML = ''; };
   }, [entries, activeIndex, results, answerState, durations, isMixed, trebleEntries, bassEntries, width, totalHeight]);

@@ -87,6 +87,14 @@ button, .no-select { user-select: none; -webkit-user-select: none; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
 /* VexFlow */
+/* Il nome della nota scritto accanto a una nota sbagliata: è testo normale,
+   piccolo, non un simbolo musicale. Deve battere la regola qui sotto. */
+svg text.nota-nome {
+  font-family: system-ui, -apple-system, sans-serif !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+
 svg text { font-family: 'Bravura', 'Academico', serif !important; }
 
 /* ── Animazioni ───────────────────────────────────────────────────────────── */
@@ -126,6 +134,18 @@ svg text { font-family: 'Bravura', 'Academico', serif !important; }
 }
 .anim-timer { animation: timer-fill 6s linear forwards; }
 
+/* Conto alla rovescia del responso: la durata arriva inline dal componente. */
+@keyframes countdown-empty {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.anim-countdown {
+  transform-origin: left center;
+  animation-name: countdown-empty;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
 @keyframes glow-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0.5); }
   50% { box-shadow: 0 0 0 10px rgb(99 102 241 / 0); }
@@ -139,5 +159,5 @@ svg text { font-family: 'Bravura', 'Academico', serif !important; }
 .anim-confetti { animation: confetti-fall 1.9s linear forwards; }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-pop, .anim-up, .anim-shake, .anim-xp, .anim-glow, .anim-confetti { animation: none; }
+  .anim-pop, .anim-up, .anim-shake, .anim-xp, .anim-glow, .anim-confetti, .anim-countdown { animation: none; }
 }

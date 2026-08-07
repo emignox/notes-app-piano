@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:pezzi": "node scripts/check-pieces.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.14.0",

@@ -2,7 +2,7 @@
 // I campioni del pianoforte vengono da un CDN: la prima volta che si sentono
 // finiscono in cache, così la volta dopo ci sono anche offline.
 
-const VERSION = 'piano-trainer-v3';
+const VERSION = 'piano-trainer-v4';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 const AUDIO = `${VERSION}-audio`;
@@ -11,7 +11,8 @@ const SHELL_FILES = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.svg',
+  '/favicon-32.png',
+  '/favicon-96.png',
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png',

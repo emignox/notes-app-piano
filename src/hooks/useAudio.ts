@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Tone from 'tone';
+import { claimAudioSession } from '../lib/audioSession';
 
 const BASE_URL = 'https://tonejs.github.io/audio/salamander/';
 
@@ -27,6 +28,14 @@ const LOAD_TIMEOUT_MS = 9000;
 
 export type AudioStatus = 'idle' | 'loading' | 'ready' | 'fallback';
 
+function contextState(): string {
+  try {
+    return Tone.getContext().state;
+  } catch {
+    return 'closed';
+  }
+}
+
 export interface SequenceNote {
   toneNote: string;
   durationSec: number;
@@ -34,6 +43,8 @@ export interface SequenceNote {
 
 export function useAudio(volume = 0.8) {
   const [status, setStatus] = useState<AudioStatus>('idle');
+  /** Il contesto sta davvero suonando: se è falso l'app è muta e va detto. */
+  const [running, setRunning] = useState(false);
 
   const samplerRef = useRef<Tone.Sampler | null>(null);
   const synthRef = useRef<Tone.PolySynth | null>(null);
@@ -45,7 +56,8 @@ export function useAudio(volume = 0.8) {
   const metronomeRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    Tone.getDestination().volume.rampTo(Tone.gainToDb(Math.max(0.001, volume)), 0.1);
+    const safe = Number.isFinite(volume) ? Math.min(1, Math.max(0.001, volume)) : 0.8;
+    Tone.getDestination().volume.rampTo(Tone.gainToDb(safe), 0.1);
   }, [volume]);
 
   /** Sicuro da chiamare quante volte si vuole: inizializza una sola volta. */
@@ -54,11 +66,13 @@ export function useAudio(volume = 0.8) {
     startedRef.current = true;
     setStatus('loading');
 
+    claimAudioSession();
     try {
       await Tone.start();
     } catch {
       /* verrà ritentato al prossimo gesto */
     }
+    setRunning(contextState() === 'running');
 
     // Ripiego sempre pronto: se i campioni tardano, il suono c'è comunque.
     const synth = new Tone.PolySynth(Tone.Synth, {
@@ -118,30 +132,72 @@ export function useAudio(volume = 0.8) {
     return synthRef.current;
   }, []);
 
+  /**
+   * Riporta il contesto in funzione. Serve più spesso di quanto sembri: iOS
+   * sospende l'audio quando l'app va in secondo piano e NON lo riattiva da solo
+   * al ritorno — senza questo l'app resta muta finché non la si chiude.
+   * Va chiamata da un gesto dell'utente, e da lì siamo sempre chiamati.
+   */
+  const resume = useCallback(async () => {
+    claimAudioSession();
+    if (!startedRef.current) {
+      await initialize();
+      return contextState() === 'running';
+    }
+    if (contextState() !== 'running') {
+      try {
+        await Tone.start();
+      } catch {
+        /* niente gesto valido: riproverà al prossimo tocco */
+      }
+    }
+    const ok = contextState() === 'running';
+    setRunning(ok);
+    return ok;
+  }, [initialize]);
+
+  /** Suona subito se il contesto è vivo, altrimenti lo sveglia e poi suona. */
+  const withAudio = useCallback(
+    (fire: () => void) => {
+      if (contextState() === 'running') {
+        fire();
+        return;
+      }
+      void resume().then(ok => {
+        if (ok) fire();
+      });
+    },
+    [resume],
+  );
+
   const playNote = useCallback(
     (toneNote: string, duration = 1.6) => {
-      const v = voice();
-      if (!v) return;
-      try {
-        v.triggerAttackRelease(toneNote, duration);
-      } catch {
-        /* ignora note fuori range */
-      }
+      withAudio(() => {
+        const v = voice();
+        if (!v) return;
+        try {
+          v.triggerAttackRelease(toneNote, duration);
+        } catch {
+          /* ignora note fuori range */
+        }
+      });
     },
-    [voice],
+    [voice, withAudio],
   );
 
   const playChord = useCallback(
     (notes: string[], duration = 1.4) => {
-      const v = voice();
-      if (!v) return;
-      try {
-        v.triggerAttackRelease(notes, duration);
-      } catch {
-        /* ignora */
-      }
+      withAudio(() => {
+        const v = voice();
+        if (!v) return;
+        try {
+          v.triggerAttackRelease(notes, duration);
+        } catch {
+          /* ignora */
+        }
+      });
     },
-    [voice],
+    [voice, withAudio],
   );
 
   /** Arpeggio breve e brillante: premia senza interrompere il ritmo di studio. */
@@ -180,29 +236,31 @@ export function useAudio(volume = 0.8) {
    */
   const playSequence = useCallback(
     (notes: SequenceNote[], onNote?: (index: number) => void, onEnd?: () => void) => {
-      const v = voice();
       clearTimers();
-      if (!v || notes.length === 0) return;
-      const lead = 0.15;
-      let offset = 0;
-      const start = Tone.now() + lead;
+      withAudio(() => {
+        const v = voice();
+        if (!v || notes.length === 0) return;
+        const lead = 0.15;
+        let offset = 0;
+        const start = Tone.now() + lead;
 
-      notes.forEach((n, i) => {
-        try {
-          v.triggerAttackRelease(n.toneNote, Math.max(0.12, n.durationSec * 0.92), start + offset);
-        } catch {
-          /* ignora */
-        }
-        if (onNote) {
-          const at = (lead + offset) * 1000;
-          timersRef.current.push(setTimeout(() => onNote(i), at));
-        }
-        offset += n.durationSec;
-      });
+        notes.forEach((n, i) => {
+          try {
+            v.triggerAttackRelease(n.toneNote, Math.max(0.12, n.durationSec * 0.92), start + offset);
+          } catch {
+            /* ignora */
+          }
+          if (onNote) {
+            const at = (lead + offset) * 1000;
+            timersRef.current.push(setTimeout(() => onNote(i), at));
+          }
+          offset += n.durationSec;
+        });
 
       if (onEnd) timersRef.current.push(setTimeout(onEnd, (lead + offset) * 1000 + 120));
+      });
     },
-    [voice, clearTimers],
+    [voice, clearTimers, withAudio],
   );
 
   /** Come playSequence, ma ogni passo può contenere più note insieme (accordi). */
@@ -212,28 +270,77 @@ export function useAudio(volume = 0.8) {
       onStep?: (index: number) => void,
       onEnd?: () => void,
     ) => {
-      const v = voice();
       clearTimers();
-      if (!v || steps.length === 0) return;
-      const lead = 0.15;
-      let offset = 0;
-      const start = Tone.now() + lead;
+      withAudio(() => {
+        const v = voice();
+        if (!v || steps.length === 0) return;
+        const lead = 0.15;
+        let offset = 0;
+        const start = Tone.now() + lead;
 
-      steps.forEach((step, i) => {
-        if (step.notes.length > 0) {
-          try {
-            v.triggerAttackRelease(step.notes, Math.max(0.14, step.durationSec * 0.95), start + offset);
-          } catch {
-            /* ignora */
+        steps.forEach((step, i) => {
+          if (step.notes.length > 0) {
+            try {
+              v.triggerAttackRelease(step.notes, Math.max(0.14, step.durationSec * 0.95), start + offset);
+            } catch {
+              /* ignora */
+            }
           }
-        }
-        if (onStep) timersRef.current.push(setTimeout(() => onStep(i), (lead + offset) * 1000));
-        offset += step.durationSec;
-      });
+          if (onStep) timersRef.current.push(setTimeout(() => onStep(i), (lead + offset) * 1000));
+          offset += step.durationSec;
+        });
 
       if (onEnd) timersRef.current.push(setTimeout(onEnd, (lead + offset) * 1000 + 120));
+      });
     },
-    [voice, clearTimers],
+    [voice, clearTimers, withAudio],
+  );
+
+  /**
+   * Esegue una partitura già "interpretata": ogni evento sa quando parte,
+   * quanto resta premuto e con che forza.
+   *
+   * È la differenza fra sentire le note e sentire il pezzo. `playChordSequence`
+   * fa partire un blocco per volta, tutti uguali e tutti staccati; qui gli
+   * eventi hanno tempi assoluti, quindi due note legate si sovrappongono
+   * davvero, uno staccato stacca davvero, e un crescendo si sente crescere.
+   */
+  const playPerformance = useCallback(
+    (
+      events: { notes: string[]; at: number; hold: number; velocity: number; stepIndex: number }[],
+      stepTimes: number[],
+      onStep?: (index: number) => void,
+      onEnd?: () => void,
+    ) => {
+      clearTimers();
+      withAudio(() => {
+        const v = voice();
+        if (!v || events.length === 0) return;
+        const lead = 0.15;
+        const start = Tone.now() + lead;
+
+        events.forEach(e => {
+          try {
+            v.triggerAttackRelease(e.notes, Math.max(0.08, e.hold), start + e.at, e.velocity);
+          } catch {
+            /* una nota fuori range non deve fermare l'esecuzione */
+          }
+        });
+
+        // Il cursore si muove sui PASSI, non sugli eventi: in un passo dove una
+        // mano tace non c'è nessun evento, ma il tempo scorre lo stesso.
+        if (onStep) {
+          stepTimes.forEach((t, i) => {
+            timersRef.current.push(setTimeout(() => onStep(i), (lead + t) * 1000));
+          });
+        }
+        if (onEnd) {
+          const last = events.reduce((m, e) => Math.max(m, e.at + e.hold), 0);
+          timersRef.current.push(setTimeout(onEnd, (lead + last) * 1000 + 150));
+        }
+      });
+    },
+    [voice, clearTimers, withAudio],
   );
 
   const stopSequence = useCallback(() => {
@@ -270,6 +377,43 @@ export function useAudio(volume = 0.8) {
     [stopMetronome],
   );
 
+  /**
+   * Al ritorno da secondo piano il contesto è spesso sospeso: si prova a
+   * riaccenderlo subito, così la prima nota che si tocca si sente già.
+   */
+  useEffect(() => {
+    const wake = () => {
+      if (!startedRef.current || document.visibilityState !== 'visible') return;
+      if (contextState() === 'running') {
+        setRunning(true);
+        return;
+      }
+      void Tone.start()
+        .then(() => setRunning(contextState() === 'running'))
+        .catch(() => setRunning(false));
+    };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
+    };
+  }, []);
+
+  /** Nota di prova: serve all'utente per sentire se il suono esce davvero. */
+  const test = useCallback(async () => {
+    const ok = await resume();
+    if (ok) {
+      const v = voice();
+      try {
+        v?.triggerAttackRelease('C5', 0.9);
+      } catch {
+        /* ignora */
+      }
+    }
+    return ok;
+  }, [resume, voice]);
+
   useEffect(
     () => () => {
       timersRef.current.forEach(clearTimeout);
@@ -280,14 +424,18 @@ export function useAudio(volume = 0.8) {
 
   return {
     status,
+    running,
     isReady: status === 'ready' || status === 'fallback',
     initialize,
+    resume,
+    test,
     playNote,
     playChord,
     playSuccess,
     playError,
     playSequence,
     playChordSequence,
+    playPerformance,
     stopSequence,
     startMetronome,
     stopMetronome,

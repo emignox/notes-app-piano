@@ -209,6 +209,32 @@ export function useProgress() {
     [apply],
   );
 
+  /** Segna una lezione come completata e assegna gli XP una volta sola. */
+  const completeLesson = useCallback(
+    (lessonId: string, xp: number): Achievement[] => {
+      const result = apply(prev =>
+        prev.lessonsDone.includes(lessonId)
+          ? prev
+          : { ...prev, lessonsDone: [...prev.lessonsDone, lessonId], xp: prev.xp + xp },
+      );
+      const { state, unlocked } = withAchievements(result);
+      if (unlocked.length > 0) apply(() => state);
+      return unlocked;
+    },
+    [apply],
+  );
+
+  /** Esito di un esercizio di teoria: alimenta il ripasso mirato. */
+  const recordTheory = useCallback(
+    (itemId: string, correct: boolean) => {
+      apply(prev => {
+        const [ok, tot] = prev.theory[itemId] ?? [0, 0];
+        return { ...prev, theory: { ...prev.theory, [itemId]: [ok + (correct ? 1 : 0), tot + 1] } };
+      });
+    },
+    [apply],
+  );
+
   // ── Impostazioni e reset ──────────────────────────────────────────────────
   const setSettings = useCallback(
     (patch: Partial<Settings>) => {
@@ -256,6 +282,8 @@ export function useProgress() {
     markIntroSeen,
     recordSprint,
     recordMelody,
+    completeLesson,
+    recordTheory,
     setSettings,
     resetAll,
     replaceState,

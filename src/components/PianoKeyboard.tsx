@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { IT_NAMES, parseNote, pitchClass } from '../lib/notes';
+import { IT_NAMES, midiOf, parseNote } from '../lib/notes';
 
 interface PianoKeyboardProps {
   from: string;
@@ -17,6 +17,11 @@ interface PianoKeyboardProps {
   wrong?: string | null;
   /** Suggerimenti (es. la nota da trovare quando si usa l'aiuto). */
   hint?: string[];
+  /**
+   * La nota di TURNO dentro una figura: si accende più forte dei suggerimenti,
+   * così si vede insieme l'accordo o la scala intera e dove si è arrivati.
+   */
+  active?: string | null;
   labels?: 'all' | 'c' | 'none';
   disabled?: boolean;
   compact?: boolean;
@@ -27,6 +32,12 @@ interface KeyDef {
   isBlack: boolean;
   letter: string;
   octave: number;
+  /**
+   * Posizione in unità di tasto bianco. Per un bianco è il suo indice; per un
+   * nero è il confine fra i due bianchi su cui sta a cavallo (Do♯ = 1, cioè il
+   * bordo fra Do e Re). Mi/Fa e Si/Do non hanno nero: i gruppi da 2 e da 3
+   * vengono da sé.
+   */
   slot: number;
 }
 
@@ -40,8 +51,9 @@ function buildKeys(startOctave: number, endOctave: number): KeyDef[] {
     for (const letter of WHITE_ORDER) {
       keys.push({ note: `${letter}${oct}`, isBlack: false, letter, octave: oct, slot });
       slot++;
+      // slot ora è il bordo destro del bianco appena inserito: lì va il nero.
       const black = BLACK_AFTER[letter];
-      if (black) keys.push({ note: `${black}${oct}`, isBlack: true, letter: black, octave: oct, slot: slot - 0.5 });
+      if (black) keys.push({ note: `${black}${oct}`, isBlack: true, letter: black, octave: oct, slot });
     }
   }
   return keys;
@@ -57,6 +69,7 @@ export function PianoKeyboard({
   correct = null,
   wrong = null,
   hint = [],
+  active = null,
   labels = 'c',
   disabled = false,
   compact = false,
@@ -90,10 +103,11 @@ export function PianoKeyboard({
     return () => obs.disconnect();
   }, [naturalWidth]);
 
-  const samePC = useCallback((a: string | null, b: string) => {
-    if (!a) return false;
-    return pitchClass(a) === pitchClass(b) && parseNote(a).octave === parseNote(b).octave;
-  }, []);
+  // Confronto per ALTEZZA, non per lettera+ottava: Do♭5 e Si4 sono lo stesso
+  // tasto, ma il numero d'ottava scritto è diverso. Con la sola classe di
+  // altezza più l'ottava, la scala di Sol♭ maggiore (…Si♭ Do♭…) e le settime
+  // diminuite non illuminavano il tasto giusto.
+  const sameKey = useCallback((a: string | null, b: string) => a != null && midiOf(a) === midiOf(b), []);
 
   const press = useCallback(
     (note: string) => (e: React.PointerEvent) => {
@@ -114,15 +128,18 @@ export function PianoKeyboard({
         style={{ transformOrigin: 'top left', transform: `scale(${scale})`, width: naturalWidth, height: whiteH + 6, minWidth: scaledW }}
       >
         {whiteKeys.map((key, i) => {
-          const isCorrect = samePC(correct, key.note);
-          const isWrong = samePC(wrong, key.note);
-          const isHint = hint.some(h => samePC(h, key.note));
+          const isCorrect = sameKey(correct, key.note);
+          const isWrong = sameKey(wrong, key.note);
+          const isActive = sameKey(active, key.note);
+          const isHint = hint.some(h => sameKey(h, key.note));
           const isC = key.letter === 'C';
-          const bg = isCorrect ? '#16a34a' : isWrong ? '#dc2626' : isHint ? '#c7d2fe' : '#fffdf7';
-          const light = !isCorrect && !isWrong;
+          const bg = isCorrect ? '#16a34a' : isWrong ? '#dc2626' : isActive ? '#4f46e5' : isHint ? '#c7d2fe' : '#fffdf7';
+          const light = !isCorrect && !isWrong && !isActive;
           return (
             <button
               key={key.note}
+              data-note={key.note}
+              aria-label={key.note}
               onPointerDown={press(key.note)}
               onContextMenu={e => e.preventDefault()}
               className="absolute rounded-b-lg border border-gray-300/80 transition-[filter,background-color] duration-100 active:brightness-90"
@@ -134,6 +151,8 @@ export function PianoKeyboard({
                 backgroundColor: bg,
                 boxShadow: isCorrect
                   ? '0 0 0 3px #16a34a, inset 0 -5px 7px rgba(0,0,0,0.12)'
+                  : isActive
+                  ? '0 0 0 3px #4f46e5, inset 0 -5px 7px rgba(0,0,0,0.12)'
                   : 'inset 0 -5px 7px rgba(0,0,0,0.10)',
                 zIndex: 1,
               }}
@@ -159,13 +178,16 @@ export function PianoKeyboard({
         })}
 
         {blackKeys.map(key => {
-          const isCorrect = samePC(correct, key.note);
-          const isWrong = samePC(wrong, key.note);
-          const isHint = hint.some(h => samePC(h, key.note));
-          const bg = isCorrect ? '#16a34a' : isWrong ? '#dc2626' : isHint ? '#4f46e5' : '#161b2e';
+          const isCorrect = sameKey(correct, key.note);
+          const isWrong = sameKey(wrong, key.note);
+          const isActive = sameKey(active, key.note);
+          const isHint = hint.some(h => sameKey(h, key.note));
+          const bg = isCorrect ? '#16a34a' : isWrong ? '#dc2626' : isActive ? '#818cf8' : isHint ? '#4f46e5' : '#161b2e';
           return (
             <button
               key={key.note}
+              data-note={key.note}
+              aria-label={key.note}
               onPointerDown={press(key.note)}
               onContextMenu={e => e.preventDefault()}
               className="absolute rounded-b-md transition-[filter,background-color] duration-100 active:brightness-125"
@@ -175,7 +197,11 @@ export function PianoKeyboard({
                 width: blackW,
                 height: blackH,
                 backgroundColor: bg,
-                boxShadow: isCorrect ? '0 0 0 3px #16a34a, 2px 4px 8px rgba(0,0,0,0.5)' : '2px 4px 8px rgba(0,0,0,0.45)',
+                boxShadow: isCorrect
+                  ? '0 0 0 3px #16a34a, 2px 4px 8px rgba(0,0,0,0.5)'
+                  : isActive
+                  ? '0 0 0 3px #818cf8, 2px 4px 8px rgba(0,0,0,0.5)'
+                  : '2px 4px 8px rgba(0,0,0,0.45)',
                 zIndex: 2,
               }}
             />

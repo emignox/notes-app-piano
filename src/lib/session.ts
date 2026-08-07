@@ -62,6 +62,39 @@ function weightedDraw(weights: number[], skipIndex: number): number {
   return weights.findIndex((_, i) => i !== skipIndex);
 }
 
+/**
+ * Dispone gli elementi separando il più possibile quelli uguali.
+ * A ogni passo sceglie quello che resta più volte fra i candidati diversi
+ * dall'ultimo piazzato; a parità, a caso, così due sessioni non sono identiche.
+ */
+export function spread<T>(items: T[]): T[] {
+  const left = new Map<T, number>();
+  for (const it of items) left.set(it, (left.get(it) ?? 0) + 1);
+
+  const out: T[] = [];
+  let last: T | undefined;
+  while (out.length < items.length) {
+    let best: T | undefined;
+    let bestCount = 0;
+    let ties = 0;
+    for (const [item, count] of left) {
+      if (count === 0 || (item === last && left.size > 1)) continue;
+      if (count > bestCount) { best = item; bestCount = count; ties = 1; }
+      else if (count === bestCount) { ties++; if (Math.random() < 1 / ties) best = item; }
+    }
+    // Restava solo la nota appena piazzata: inevitabile (poche note sbloccate).
+    if (best === undefined) {
+      for (const [item, count] of left) if (count > 0) { best = item; break; }
+      if (best === undefined) break;
+    }
+    out.push(best);
+    const n = (left.get(best) ?? 1) - 1;
+    if (n === 0) left.delete(best); else left.set(best, n);
+    last = best;
+  }
+  return out;
+}
+
 export function buildSession(opts: BuildOptions): Question[] {
   const { unlocked, cards, focusIds } = opts;
   if (unlocked.length === 0) return [];
@@ -87,23 +120,22 @@ export function buildSession(opts: BuildOptions): Question[] {
     picks.push(weightedDraw(weights, pool.length > 1 ? last : -1));
   }
 
-  // Interleaving: mescola e poi separa le ripetizioni adiacenti.
-  for (let i = picks.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [picks[i], picks[j]] = [picks[j], picks[i]];
-  }
-  if (pool.length > 1) {
-    for (let i = 1; i < picks.length; i++) {
-      if (picks[i] !== picks[i - 1]) continue;
-      const swap = picks.findIndex((p, k) => k > i && p !== picks[i - 1] && p !== picks[i + 1]);
-      if (swap > -1) [picks[i], picks[swap]] = [picks[swap], picks[i]];
-    }
-  }
+  // Interleaving. Mescolare a caso e poi tentare qualche scambio non basta:
+  // il mescolamento RICREA le ripetizioni e la riparazione, cercando solo in
+  // avanti, spesso non trova un posto dove spostarle. Risultato: capitava la
+  // stessa nota due volte di fila, cioè la domanda più inutile che ci sia —
+  // l'hai appena vista, non stai ricordando nulla.
+  //
+  // Qui invece si dispone per costruzione: a ogni passo si prende la nota che
+  // resta più volte da piazzare, escludendo quella appena messa. Finché una
+  // sola nota non supera la metà dei posti, il risultato non ha ripetizioni
+  // adiacenti — ed è dimostrabile, non affidato al caso.
+  const ordered = spread(picks);
 
   // Direzione: "trova il tasto" solo su note già nominabili, e mai sulla nuova.
   const findRatio = opts.findRatio ?? (unlocked.length >= 3 ? 0.25 : 0);
   const alreadyIntroduced = new Set<string>();
-  return picks.map((idx, slot) => {
+  return ordered.map((idx, slot) => {
     const note = pool[idx];
     const readCard = cards[cardKey(note.id, 'read')];
     // "Nuova" solo alla prima apparizione: dalla seconda in poi non lo è più.

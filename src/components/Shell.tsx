@@ -2,11 +2,11 @@
 // microfono) e navigazione in basso — a portata di pollice, che su telefono è
 // l'unica posizione che conta.
 
-import { BarChart3, ListMusic, Mic, MicOff, Music4, Settings, Zap } from 'lucide-react';
+import { BarChart3, BookOpen, ListMusic, Mic, MicOff, Music4, Settings, Volume2, VolumeX, Zap } from 'lucide-react';
 import type { LevelInfo } from '../lib/xp';
 import { Ring } from './ui';
 
-export type Tab = 'practice' | 'melody' | 'sprint' | 'stats' | 'settings';
+export type Tab = 'practice' | 'melody' | 'technique' | 'sprint' | 'stats' | 'settings';
 
 interface TopBarProps {
   level: LevelInfo;
@@ -16,6 +16,8 @@ interface TopBarProps {
   dailyGoal: number;
   micOn: boolean;
   onToggleMic: () => void;
+  audioOn: boolean;
+  onTestAudio: () => void;
 }
 
 export function TopBar({
@@ -26,6 +28,8 @@ export function TopBar({
   dailyGoal,
   micOn,
   onToggleMic,
+  audioOn,
+  onTestAudio,
 }: TopBarProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md safe-top">
@@ -57,6 +61,21 @@ export function TopBar({
           </span>
         </div>
 
+        {/* Stato dell'audio + prova: se il telefono resta muto è qui che si guarda */}
+        <button
+          type="button"
+          onClick={onTestAudio}
+          className={`rounded-xl border p-2 transition-all active:scale-95 ${
+            audioOn
+              ? 'border-line bg-surface2 text-ink2'
+              : 'border-amber-500/50 bg-amber-500/15 text-amber-400'
+          }`}
+          title={audioOn ? 'Prova il suono' : 'Audio spento — tocca per attivarlo'}
+          aria-label={audioOn ? 'Prova il suono' : 'Attiva l’audio'}
+        >
+          {audioOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+        </button>
+
         <button
           type="button"
           onClick={onToggleMic}
@@ -78,6 +97,7 @@ export function TopBar({
 const TABS: { id: Tab; label: string; icon: typeof Music4 }[] = [
   { id: 'practice', label: 'Pratica', icon: Music4 },
   { id: 'melody', label: 'Canzoni', icon: ListMusic },
+  { id: 'technique', label: 'Studio', icon: BookOpen },
   { id: 'sprint', label: 'Sprint', icon: Zap },
   { id: 'stats', label: 'Progressi', icon: BarChart3 },
   { id: 'settings', label: 'Opzioni', icon: Settings },
@@ -94,12 +114,12 @@ export function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => v
               key={id}
               type="button"
               onClick={() => onChange(id)}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 transition-colors ${
+              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 transition-colors ${
                 active ? 'text-brand' : 'text-ink3'
               }`}
             >
               <Icon className={`h-5 w-5 ${active ? 'scale-110' : ''} transition-transform`} />
-              <span className="text-[10px] font-semibold">{label}</span>
+              <span className="text-[9px] font-semibold leading-none">{label}</span>
             </button>
           );
         })}

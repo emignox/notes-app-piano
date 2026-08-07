@@ -1,18 +1,46 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProgress } from './hooks/useProgress';
 import { useAudio } from './hooks/useAudio';
 import { usePitchDetection } from './hooks/usePitchDetection';
 import type { Tab } from './components/Shell';
 import { BottomNav, TopBar } from './components/Shell';
-import { PracticeView } from './components/PracticeView';
 import type { SongSection } from './components/MelodyView';
-import { MelodyView } from './components/MelodyView';
-import { PieceView } from './components/PieceView';
-import { SprintView } from './components/SprintView';
-import { StatsView } from './components/StatsView';
-import { SettingsView } from './components/SettingsView';
 import type { ToastData } from './components/ui';
 import { Toasts } from './components/ui';
+import { GlossarioProvider } from './components/RichText';
+
+// Le viste arrivano solo quando vengono aperte. Anche Pratica, pur essendo la
+// schermata iniziale, resta separata: così la cornice dell'app può comparire
+// prima che il browser analizzi VexFlow e il motore degli spartiti.
+const PracticeView = lazy(() =>
+  import('./components/PracticeView').then(module => ({ default: module.PracticeView })),
+);
+const MelodyView = lazy(() =>
+  import('./components/MelodyView').then(module => ({ default: module.MelodyView })),
+);
+const PieceView = lazy(() =>
+  import('./components/PieceView').then(module => ({ default: module.PieceView })),
+);
+const StudyView = lazy(() =>
+  import('./components/StudyView').then(module => ({ default: module.StudyView })),
+);
+const SprintView = lazy(() =>
+  import('./components/SprintView').then(module => ({ default: module.SprintView })),
+);
+const StatsView = lazy(() =>
+  import('./components/StatsView').then(module => ({ default: module.StatsView })),
+);
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then(module => ({ default: module.SettingsView })),
+);
+
+function ViewFallback() {
+  return (
+    <div className="rounded-2xl border border-line bg-surface px-4 py-8 text-center text-sm text-ink3">
+      Caricamento…
+    </div>
+  );
+}
 
 export default function App() {
   const progress = useProgress();
@@ -47,6 +75,17 @@ export default function App() {
     };
   }, []);
 
+  // Prova del suono: l'unico modo onesto di capire se il telefono è muto per
+  // colpa del browser o per l'interruttore silenzioso è farlo suonare.
+  const testAudio = useCallback(async () => {
+    const ok = await audio.test();
+    if (ok) {
+      notify('🔊', 'Senti un Do?', 'Se no: interruttore silenzioso e volume del telefono.');
+    } else {
+      notify('🔇', 'Audio ancora bloccato', 'Tocca lo schermo e riprova.');
+    }
+  }, [audio, notify]);
+
   const toggleMic = useCallback(async () => {
     if (pitch.isListening) {
       pitch.stop();
@@ -60,13 +99,15 @@ export default function App() {
     () => ({
       isListening: pitch.isListening,
       liveNote: pitch.liveNote,
+      level: pitch.level,
       confirmedNote: pitch.confirmedNote,
       suppress: pitch.suppress,
     }),
-    [pitch.isListening, pitch.liveNote, pitch.confirmedNote, pitch.suppress],
+    [pitch.isListening, pitch.liveNote, pitch.level, pitch.confirmedNote, pitch.suppress],
   );
 
   return (
+    <GlossarioProvider audio={audio}>
     <div className="min-h-screen bg-canvas text-ink">
       <TopBar
         level={progress.level}
@@ -76,6 +117,8 @@ export default function App() {
         dailyGoal={progress.settings.dailyGoal}
         micOn={pitch.isListening}
         onToggleMic={toggleMic}
+        audioOn={audio.running}
+        onTestAudio={testAudio}
       />
 
       <main className="mx-auto max-w-2xl space-y-3 px-3 pb-28 pt-3">
@@ -90,43 +133,49 @@ export default function App() {
           </div>
         )}
 
-        {tab === 'practice' && (
-          <PracticeView progress={progress} audio={audio} mic={mic} notify={notify} />
-        )}
-        {tab === 'melody' &&
-          (songSection === 'melodie' ? (
-            <MelodyView
-              progress={progress}
-              audio={audio}
-              mic={mic}
-              notify={notify}
-              section={songSection}
-              onSection={setSongSection}
-            />
-          ) : (
-            <PieceView
+        <Suspense fallback={<ViewFallback />}>
+          {tab === 'practice' && (
+            <PracticeView progress={progress} audio={audio} mic={mic} notify={notify} />
+          )}
+          {tab === 'melody' &&
+            (songSection === 'melodie' ? (
+              <MelodyView
+                progress={progress}
+                audio={audio}
+                mic={mic}
+                notify={notify}
+                section={songSection}
+                onSection={setSongSection}
+              />
+            ) : (
+              <PieceView
+                progress={progress}
+                audio={audio}
+                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, suppress: pitch.suppress }}
+                notify={notify}
+                section={songSection}
+                onSection={setSongSection}
+              />
+            ))}
+          {tab === 'technique' && (
+            <StudyView progress={progress} audio={audio} mic={mic} notify={notify} />
+          )}
+          {tab === 'sprint' && (
+            <SprintView
               progress={progress}
               audio={audio}
               mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, suppress: pitch.suppress }}
               notify={notify}
-              section={songSection}
-              onSection={setSongSection}
             />
-          ))}
-        {tab === 'sprint' && (
-          <SprintView
-            progress={progress}
-            audio={audio}
-            mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, suppress: pitch.suppress }}
-            notify={notify}
-          />
-        )}
-        {tab === 'stats' && <StatsView progress={progress} />}
-        {tab === 'settings' && <SettingsView progress={progress} />}
+          )}
+          {tab === 'stats' && <StatsView progress={progress} />}
+          {tab === 'settings' && <SettingsView progress={progress} onTestSound={testAudio} />}
+        </Suspense>
       </main>
 
-      <BottomNav tab={tab} onChange={setTab} />
+      <BottomNav tab={tab} onChange={t => { setTab(t); window.scrollTo({ top: 0 }); }} />
       <Toasts items={toasts} onDone={dismissToast} />
     </div>
+    </GlossarioProvider>
   );
 }

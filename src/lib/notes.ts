@@ -13,29 +13,60 @@ export const IT_NAMES: Record<string, string> = {
 
 const SEMITONE: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
+/**
+ * Le doppie alterazioni servono davvero: la settima dell'accordo di settima
+ * diminuita su Do è un Si♭♭ (stesso tasto del La, ma è la SETTIMA, non la
+ * sesta), e il settimo grado del Sol♯ minore armonica è un Fa♯♯. Scriverle
+ * come La e Sol farebbe comparire due volte la stessa lettera e renderebbe
+ * incomprensibile sia il pentagramma sia la formula dell'accordo.
+ */
+export type Acc = '' | '#' | 'b' | '##' | 'bb';
+
 export interface ParsedNote {
   letter: string;
-  acc: '' | '#' | 'b';
+  acc: Acc;
   octave: number;
 }
 
-const NOTE_RE = /^([A-Ga-g])([#b]?)(-?\d+)?$/;
+const NOTE_RE = /^([A-Ga-g])(##|bb|[#b]?)(-?\d+)?$/;
 
-/** Accetta "C", "C#", "Bb4", "F#4". Ottava assente → 4. */
+/** Accetta "C", "C#", "Bb4", "F#4", "Bbb4", "F##4". Ottava assente → 4. */
 export function parseNote(note: string): ParsedNote {
   const m = NOTE_RE.exec((note ?? '').trim());
   if (!m) return { letter: 'C', acc: '', octave: 4 };
   return {
     letter: m[1].toUpperCase(),
-    acc: (m[2] as '' | '#' | 'b') ?? '',
+    acc: (m[2] as Acc) ?? '',
     octave: m[3] ? parseInt(m[3], 10) : 4,
   };
 }
 
+/** Quanti semitoni sposta l'alterazione: ♯ = +1, ♯♯ = +2, ♭♭ = −2. */
+export function alterOf(acc: Acc): number {
+  if (acc.startsWith('#')) return acc.length;
+  if (acc.startsWith('b')) return -acc.length;
+  return 0;
+}
+
+/** L'alterazione nel vocabolario di NoteEntry, per il disegno sul pentagramma. */
+export function accidentalKind(acc: Acc): NoteEntry['accidental'] {
+  switch (acc) {
+    case '#': return 'sharp';
+    case 'b': return 'flat';
+    case '##': return 'double-sharp';
+    case 'bb': return 'double-flat';
+    default: return undefined;
+  }
+}
+
+/** L'alterazione con i simboli veri: "##" → "♯♯". */
+export function accSymbol(acc: Acc): string {
+  return acc === '#' ? '♯' : acc === 'b' ? '♭' : acc === '##' ? '♯♯' : acc === 'bb' ? '♭♭' : '';
+}
+
 export function midiOf(note: string): number {
   const { letter, acc, octave } = parseNote(note);
-  const alter = acc === '#' ? 1 : acc === 'b' ? -1 : 0;
-  return (octave + 1) * 12 + SEMITONE[letter] + alter;
+  return (octave + 1) * 12 + SEMITONE[letter] + alterOf(acc);
 }
 
 export function noteFromMidi(midi: number): string {
@@ -57,13 +88,13 @@ export function samePitchClass(a: string, b: string): boolean {
 export function italianOf(note: string): string {
   const { letter, acc } = parseNote(note);
   const base = IT_NAMES[letter] ?? letter;
-  return base + (acc === '#' ? '♯' : acc === 'b' ? '♭' : '');
+  return base + accSymbol(acc);
 }
 
 /** Nome inglese "pulito" con simboli musicali: "C#4" → "C♯". */
 export function englishOf(note: string): string {
   const { letter, acc } = parseNote(note);
-  return letter + (acc === '#' ? '♯' : acc === 'b' ? '♭' : '');
+  return letter + accSymbol(acc);
 }
 
 export type NameStyle = 'it' | 'en' | 'both';
@@ -247,6 +278,8 @@ export function keyboardHint(note: string): string {
   const base = KEY_HINTS[letter] ?? '';
   if (acc === '#') return `il tasto NERO subito a destra di ${italianOf(letter)} — ${base}`;
   if (acc === 'b') return `il tasto NERO subito a sinistra di ${italianOf(letter)} — ${base}`;
+  if (acc === '##') return `due semitoni a destra di ${italianOf(letter)} — ${base}`;
+  if (acc === 'bb') return `due semitoni a sinistra di ${italianOf(letter)} — ${base}`;
   return base;
 }
 

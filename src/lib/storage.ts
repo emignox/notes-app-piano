@@ -76,6 +76,10 @@ export interface Persisted {
   melodyBest: Record<string, number>;
   achievements: string[];
   introSeen: string[];
+  /** Lezioni di teoria completate. */
+  lessonsDone: string[];
+  /** Risposte agli esercizi di teoria, per item: [giuste, totali]. */
+  theory: Record<string, [number, number]>;
   settings: Settings;
 }
 
@@ -112,6 +116,8 @@ export function emptyState(): Persisted {
     melodyBest: {},
     achievements: [],
     introSeen: [],
+    lessonsDone: [],
+    theory: {},
     settings: { ...defaultSettings },
   };
 }
@@ -145,6 +151,8 @@ export function load(): Persisted {
         melodyBest: parsed.melodyBest ?? {},
         achievements: parsed.achievements ?? [],
         introSeen: parsed.introSeen ?? [],
+        lessonsDone: parsed.lessonsDone ?? [],
+        theory: parsed.theory ?? {},
         settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
       };
     }

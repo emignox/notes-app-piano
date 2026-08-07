@@ -3,7 +3,7 @@
 // interruttore esiste fa parte dell'imparare.
 
 import { useRef, useState } from 'react';
-import { Download, Moon, RotateCcw, Sun, Upload } from 'lucide-react';
+import { Download, Moon, RotateCcw, Sun, Upload, Volume2 } from 'lucide-react';
 import type { NameStyle } from '../lib/notes';
 import type { Settings } from '../lib/storage';
 import { exportState, importState } from '../lib/storage';
@@ -12,6 +12,7 @@ import { Btn, Card, Panel, SectionTitle } from './ui';
 
 interface SettingsViewProps {
   progress: ProgressApi;
+  onTestSound: () => void;
 }
 
 function Row({
@@ -117,7 +118,7 @@ function NumberStepper({
   );
 }
 
-export function SettingsView({ progress }: SettingsViewProps) {
+export function SettingsView({ progress, onTestSound }: SettingsViewProps) {
   const { settings, setSettings } = progress;
   const [message, setMessage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -238,6 +239,15 @@ export function SettingsView({ progress }: SettingsViewProps) {
             className="w-32 accent-[var(--c-brand)]"
             aria-label="Volume"
           />
+        </Row>
+        <Row
+          title="Prova il suono"
+          desc="Non senti nulla sul telefono? Su iPhone controlla anche l'interruttore del silenzioso e il volume multimediale."
+        >
+          <Btn variant="soft" onClick={onTestSound} className="px-3 py-2">
+            <Volume2 className="h-4 w-4" />
+            Prova
+          </Btn>
         </Row>
         <Row title="Metronomo nelle canzoni" desc="Batte il tempo mentre ascolti la melodia.">
           <Toggle on={settings.metronome} onChange={v => set('metronome', v)} />

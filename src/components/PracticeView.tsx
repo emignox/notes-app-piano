@@ -16,7 +16,7 @@ import { levelTitle } from '../lib/xp';
 import { parseNote } from '../lib/notes';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
-import type { LiveNote } from '../hooks/usePitchDetection';
+import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
 import { Btn, Card, Panel, Pill } from './ui';
 import type { Notify } from './ui';
 import { NoteIntro } from './NoteIntro';
@@ -30,7 +30,8 @@ interface PracticeViewProps {
   mic: {
     isListening: boolean;
     liveNote: LiveNote | null;
-    confirmedNote: { note: LiveNote; id: number } | null;
+    level: number;
+    confirmedNote: ConfirmedNote | null;
     suppress: (ms?: number) => void;
   };
   notify: Notify;
@@ -178,6 +179,7 @@ export function PracticeView({ progress, audio, mic, notify }: PracticeViewProps
           showAccidentals={showAccidentals}
           micActive={mic.isListening}
           liveNote={mic.liveNote}
+          micLevel={mic.level}
           confirmedNote={mic.confirmedNote}
           onResult={handleResult}
           onToggleInput={toggleInput}

@@ -9,18 +9,18 @@
 //    lettura): si sente dopo, quando serve a legare segno e suono;
 //  · l'aiuto compare da solo dopo qualche secondo e spiega il PERCHÉ (nota di
 //    riferimento, posizione, gruppo di tasti neri), non solo la risposta;
-//  · l'errore non si salta: mostra dov'era la nota e chiede una conferma.
+//  · l'errore mostra dov'era la nota e poi si va avanti da soli: con le mani
+//    sul piano non si può interrompere tutto per premere un tasto sullo
+//    schermo. La nota sbagliata torna comunque fra poche domande.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ChevronRight, Lightbulb, Volume2, XCircle, Zap } from 'lucide-react';
+import { Lightbulb, Volume2 } from 'lucide-react';
 import type { AnswerState, Direction, NoteEntry } from '../types';
-import type { LiveNote } from '../hooks/usePitchDetection';
+import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
 import type { Settings } from '../lib/storage';
-import { speedOf } from '../lib/srs';
 import {
   describePosition,
-  fullLabel,
   italianOf,
   keyboardHint,
   label as noteLabel,
@@ -30,7 +30,7 @@ import {
   samePitchClass,
 } from '../lib/notes';
 import { haptics } from '../lib/haptics';
-import { Btn, Panel, Pill } from './ui';
+import { Panel, Pill } from './ui';
 import { Staff } from './Staff';
 import { NoteNameButtons } from './NoteNameButtons';
 import { PianoKeyboard } from './PianoKeyboard';
@@ -48,7 +48,8 @@ export interface PracticeCardProps {
   showAccidentals: boolean;
   micActive: boolean;
   liveNote: LiveNote | null;
-  confirmedNote: { note: LiveNote; id: number } | null;
+  micLevel: number;
+  confirmedNote: ConfirmedNote | null;
   onResult: (correct: boolean, ms: number, usedHint: boolean) => void;
   onToggleInput: () => void;
   playNote: (toneNote: string, duration?: number) => void;
@@ -56,11 +57,20 @@ export interface PracticeCardProps {
   suppressMic: (ms?: number) => void;
 }
 
-const SPEED_PILLS = {
-  fast: { text: 'Fulmine', tone: 'good' as const, icon: true },
-  ok: { text: 'Bene', tone: 'brand' as const, icon: false },
-  slow: { text: 'Ci hai pensato', tone: 'warn' as const, icon: false },
-};
+// Le pause fra una domanda e l'altra. Ora che il responso non è più un riquadro
+// da leggere ma il colore della nota (più il suo nome scritto sotto, se hai
+// sbagliato), non serve tenere fermo lo schermo: l'informazione resta comunque
+// visibile e chi suona non perde il tempo della musica.
+const NEXT_OK = 90;
+const NEXT_WRONG_MIC = 280;
+const NEXT_WRONG_TAP = 430;
+
+/**
+ * Una nota rilevata meno di così prima che comparisse la carta è considerata
+ * suonata "per" questa carta. Sta sotto al tempo di transizione della risposta
+ * giusta (320 ms), altrimenti la nota appena data verrebbe riletta come nuova.
+ */
+const HANDOVER_MS = 250;
 
 export function PracticeCard({
   note,
@@ -75,6 +85,7 @@ export function PracticeCard({
   showAccidentals,
   micActive,
   liveNote,
+  micLevel,
   confirmedNote,
   onResult,
   onToggleInput,
@@ -86,15 +97,33 @@ export function PracticeCard({
   const [picked, setPicked] = useState<string | null>(null);
   const [hintOpen, setHintOpen] = useState(isNew);
   const [usedHint, setUsedHint] = useState(isNew);
-  const [tookMs, setTookMs] = useState(0);
+  // Quanto ci hai messo: serve al punteggio, non più a disegnare nulla.
+  const tookRef = useRef(0);
 
   // Il cronometro parte a montaggio avvenuto, non durante il render.
   const startRef = useRef(0);
   useEffect(() => { startRef.current = performance.now(); }, []);
-  // Qualsiasi rilevazione del microfono più vecchia di questo id appartiene alla
-  // carta precedente: va ignorata.
+  // Qualsiasi rilevazione più vecchia di questo id appartiene alla carta
+  // precedente e va ignorata (vedi l'aggiustamento al montaggio più sotto).
   const micBaselineRef = useRef(confirmedNote?.id ?? 0);
+  const mountedRef = useRef(false);
   const stateRef = useRef<AnswerState>('idle');
+
+  // Un solo passaggio alla prossima domanda, comunque venga innescato (timer o
+  // tocco), e mai dopo che la carta è sparita.
+  const nextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneRef = useRef(false);
+  useEffect(() => () => { if (nextRef.current) clearTimeout(nextRef.current); }, []);
+
+  const goNext = useCallback(
+    (correct: boolean, ms: number, hinted: boolean) => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      if (nextRef.current) clearTimeout(nextRef.current);
+      onResult(correct, ms, hinted);
+    },
+    [onResult],
+  );
 
   const useKeyboard = dir === 'find' || settings.readInput === 'keys';
 
@@ -127,7 +156,7 @@ export function PracticeCard({
       stateRef.current = correct ? 'correct' : 'wrong';
       setState(correct ? 'correct' : 'wrong');
       setPicked(answer);
-      setTookMs(ms);
+      tookRef.current = ms;
       setHintOpen(true);
 
       // Col microfono acceso la nota l'ha già suonata l'utente: rifarla
@@ -140,27 +169,44 @@ export function PracticeCard({
           playNote(note.toneNote);
           suppressMic(1800);
         }
-        setTimeout(() => onResult(true, ms, usedHint), micActive ? 320 : 620);
+        nextRef.current = setTimeout(() => goNext(true, ms, usedHint), NEXT_OK);
       } else {
         haptics.wrong();
-        playError();
-        suppressMic(micActive ? 900 : 2400);
-        if (revealSound) setTimeout(() => playNote(note.toneNote), 420);
+        if (micActive) {
+          // Suonando non si interrompe con un verso dall'altoparlante: oltre a
+          // spezzare la musica, obbligherebbe a restare sordi mezzo secondo per
+          // non risentirlo — e in quel mezzo secondo si perde la nota dopo.
+          nextRef.current = setTimeout(() => goNext(false, ms, usedHint), NEXT_WRONG_MIC);
+        } else {
+          playError();
+          suppressMic(600);
+          if (revealSound) setTimeout(() => playNote(note.toneNote), 300);
+          nextRef.current = setTimeout(() => goNext(false, ms, usedHint), NEXT_WRONG_TAP);
+        }
       }
     },
-    [note.englishName, note.toneNote, settings.strictOctave, settings.soundOnReveal, micActive, playNote, playError, suppressMic, onResult, usedHint],
+    [note.englishName, note.toneNote, settings.strictOctave, settings.soundOnReveal, micActive, playNote, playError, suppressMic, goNext, usedHint],
   );
 
   // Risposta dal microfono: vale in entrambe le direzioni (suoni la nota sul
   // piano vero, che è l'esercizio più utile di tutti).
   useEffect(() => {
+    // Chi suona non aspetta che la carta cambi: una nota suonata durante il
+    // passaggio finiva ignorata e bisognava ribatterla. Se al montaggio la
+    // rilevazione in sospeso è freschissima è stata suonata per QUESTA carta e
+    // non va sbarrata; se è più vecchia è la nota di prima che risuona ancora.
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      if (confirmedNote && Date.now() - confirmedNote.at < HANDOVER_MS) {
+        micBaselineRef.current = confirmedNote.id - 1;
+      }
+    }
     if (!micActive || !confirmedNote || stateRef.current !== 'idle') return;
     if (confirmedNote.id <= micBaselineRef.current) return;
     submit(`${confirmedNote.note.name}${confirmedNote.note.octave}`, true);
   }, [confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const revealCorrect = state !== 'idle' ? note.englishName : null;
-  const speed = state === 'correct' ? SPEED_PILLS[speedOf(tookMs)] : null;
   const nameStyle = settings.noteNames;
 
   return (
@@ -225,7 +271,14 @@ export function PracticeCard({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
           </span>
-          <span className="flex-1 text-sm text-ink2">Suonala sul piano…</span>
+          <span className="text-sm text-ink2">Suonala sul piano…</span>
+          {/* Livello in ingresso: se non si muove, il problema è il microfono */}
+          <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-brand/20">
+            <span
+              className="h-full rounded-full bg-brand transition-[width] duration-75"
+              style={{ width: `${Math.round(micLevel * 100)}%` }}
+            />
+          </span>
           {liveNote && (
             <span className="rounded-lg bg-brand px-3 py-1 text-base font-bold text-white">
               {italianOf(liveNote.name)}
@@ -235,39 +288,10 @@ export function PracticeCard({
         </div>
       )}
 
-      {/* Responso */}
-      {state !== 'idle' && (
-        <div
-          className={`anim-pop flex items-center gap-3 rounded-xl border px-4 py-3 ${
-            state === 'correct'
-              ? 'border-emerald-500/50 bg-emerald-500/10'
-              : 'border-red-500/50 bg-red-500/10 anim-shake'
-          }`}
-        >
-          {state === 'correct' ? (
-            <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-emerald-400" />
-          ) : (
-            <XCircle className="h-5 w-5 flex-shrink-0 text-red-400" />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className={`text-sm font-bold ${state === 'correct' ? 'text-emerald-400' : 'text-red-400'}`}>
-              {state === 'correct' ? 'Esatto!' : `Era ${fullLabel(note.englishName, 'both')}`}
-            </p>
-            {state === 'correct' && speed && (
-              <p className="mt-0.5 text-xs text-ink3">
-                {(tookMs / 1000).toFixed(1)}s · {speed.text}
-              </p>
-            )}
-          </div>
-          {state === 'correct' && speed?.icon && <Zap className="h-4 w-4 text-amber-400" />}
-          {state === 'wrong' && (
-            <Btn variant="danger" onClick={() => onResult(false, tookMs, usedHint)} className="flex-shrink-0 px-3 py-2">
-              Continua
-              <ChevronRight className="h-4 w-4" />
-            </Btn>
-          )}
-        </div>
-      )}
+      {/* Nessun responso a riquadro: quando sbagli, il nome della nota compare
+          piccolo sotto la nota sul pentagramma, dov'è il problema. Un banner
+          che dice "Era Fa" occupa spazio, sposta il resto della pagina e ti fa
+          aspettare — e se stai suonando ti fa perdere il tempo della musica. */}
 
       {/* Aiuto: spiega il ragionamento, non solo la risposta */}
       {hintOpen ? (

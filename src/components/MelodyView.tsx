@@ -7,7 +7,7 @@
 // nota precedente — che è come si legge davvero una melodia.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Lightbulb, Lock, Play, Volume2 } from 'lucide-react';
 import type { AnswerState, Melody, MelodyNote, NoteEntry, NoteResult } from '../types';
 import { melodies } from '../data/melodies';
@@ -15,7 +15,9 @@ import { describePosition, intervalLabel, italianOf, motionLabel, parseNote, pit
 import { haptics } from '../lib/haptics';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
+import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
 import { Btn, Card, Panel, Pill, Segmented } from './ui';
+import { useScrollTop } from '../hooks/useScrollTop';
 import type { Notify } from './ui';
 import { Staff } from './Staff';
 import { NoteNameButtons } from './NoteNameButtons';
@@ -23,10 +25,27 @@ import { PianoKeyboard } from './PianoKeyboard';
 
 export type SongSection = 'melodie' | 'pezzi';
 
+// Pausa dopo un errore rispondendo a schermo: il nome della nota resta scritto
+// sul pentagramma, quindi basta il tempo di accorgersene, non di leggere.
+const HOLD_WRONG = 430;
+
+// Col microfono acceso si sta SUONANDO, e la musica ha il suo tempo: qualsiasi
+// attesa fa perdere il filo. Quindi niente responso scritto e nessuna pausa —
+// la nota diventa verde o rossa sul pentagramma e si tira dritto. Questi
+// millisecondi servono solo a far vedere il colore prima di spostare il segno.
+const FLOW_OK = 60;
+const FLOW_WRONG = 90;
+
 interface MelodyViewProps {
   progress: ProgressApi;
   audio: AudioApi;
-  mic: { suppress: (ms?: number) => void };
+  mic: {
+    isListening: boolean;
+    liveNote: LiveNote | null;
+    level: number;
+    confirmedNote: ConfirmedNote | null;
+    suppress: (ms?: number) => void;
+  };
   notify: Notify;
   section: SongSection;
   onSection: (s: SongSection) => void;
@@ -128,10 +147,17 @@ function MelodyChallenge({
   melody: Melody;
   progress: ProgressApi;
   audio: AudioApi;
-  mic: { suppress: (ms?: number) => void };
+  mic: {
+    isListening: boolean;
+    liveNote: LiveNote | null;
+    level: number;
+    confirmedNote: ConfirmedNote | null;
+    suppress: (ms?: number) => void;
+  };
   notify: Notify;
   onBack: () => void;
 }) {
+  useScrollTop(melody.id);
   const { settings } = progress;
   const [idx, setIdx] = useState(0);
   const [state, setState] = useState<AnswerState>('idle');
@@ -142,6 +168,8 @@ function MelodyChallenge({
   const [hintOpen, setHintOpen] = useState(false);
   const [done, setDone] = useState(false);
   const savedRef = useRef(false);
+  const nextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (nextRef.current) clearTimeout(nextRef.current); }, []);
 
   const entries = useMemo(() => melody.notes.map(toEntry), [melody]);
   const durations = useMemo(() => melody.notes.map(mn => mn.duration), [melody]);
@@ -181,6 +209,8 @@ function MelodyChallenge({
 
   const advance = useCallback(
     (updated: NoteResult[]) => {
+      if (nextRef.current) clearTimeout(nextRef.current);
+      nextRef.current = null;
       const next = idx + 1;
       if (next >= melody.notes.length) {
         finish(updated);
@@ -206,17 +236,45 @@ function MelodyChallenge({
 
       if (correct) {
         haptics.correct();
-        audio.playNote(current.toneNote, secondsFor(melody.notes[idx].beats));
-        mic.suppress(1600);
-        setTimeout(() => advance(updated), 620);
+        if (mic.isListening) {
+          // La nota l'hai appena suonata tu: rifarla dall'altoparlante rientra
+          // nel microfono e, con 1,6 s di sordità, si perdeva la nota dopo —
+          // che in una melodia arriva subito.
+          mic.suppress(250);
+        } else {
+          audio.playNote(current.toneNote, secondsFor(melody.notes[idx].beats));
+          mic.suppress(1600);
+        }
+        nextRef.current = setTimeout(() => advance(updated), mic.isListening ? FLOW_OK : 180);
+      } else if (mic.isListening) {
+        // Suonando: la nota si colora di rosso e si va avanti. Nessun verso
+        // d'errore dall'altoparlante, che oltre a interrompere rientrerebbe
+        // nel microfono.
+        haptics.wrong();
+        nextRef.current = setTimeout(() => advance(updated), FLOW_WRONG);
       } else {
         haptics.wrong();
         audio.playError();
+        mic.suppress(400); // il verso dell'errore non deve rientrare come nota
         setHintOpen(true);
+        // Si prosegue da soli: toccando lo schermo non c'è un tempo musicale
+        // da rispettare, e sapere qual era la nota vale più della fretta.
+        nextRef.current = setTimeout(() => advance(updated), HOLD_WRONG);
       }
     },
     [state, done, current, results, idx, audio, mic, secondsFor, melody.notes, advance],
   );
+
+  // Risposta suonata sul piano vero. Prima le canzoncine ricevevano solo la
+  // funzione per silenziare il microfono, non le note che sentiva: si potevano
+  // fare solo toccando lo schermo.
+  const micBaseRef = useRef(mic.confirmedNote?.id ?? 0);
+  useEffect(() => {
+    if (!mic.isListening || !mic.confirmedNote || state !== 'idle' || done) return;
+    if (mic.confirmedNote.id <= micBaseRef.current) return;
+    micBaseRef.current = mic.confirmedNote.id;
+    submit(`${mic.confirmedNote.note.name}${mic.confirmedNote.note.octave}`);
+  }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retry = useCallback(() => {
     savedRef.current = false;
@@ -309,26 +367,32 @@ function MelodyChallenge({
         durations={durations}
       />
 
-      {state !== 'idle' && (
-        <div
-          className={`anim-pop rounded-xl border px-4 py-2.5 text-sm font-bold ${
-            state === 'correct'
-              ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400'
-              : 'border-red-500/50 bg-red-500/10 text-red-400'
-          }`}
-        >
-          {state === 'correct' ? (
-            'Esatto!'
-          ) : (
-            <div className="flex items-center justify-between gap-2">
-              <span>Era {current.displayName} ({current.englishName})</span>
-              <Btn variant="danger" className="px-3 py-1.5" onClick={() => advance(results)}>
-                Continua
-              </Btn>
-            </div>
+      {mic.isListening && state === 'idle' && !done && (
+        <div className="flex items-center gap-3 rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5">
+          <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
+          </span>
+          <span className="text-sm text-ink2">Suonala sul piano…</span>
+          <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-brand/20">
+            <span
+              className="h-full rounded-full bg-brand transition-[width] duration-75"
+              style={{ width: `${Math.round(mic.level * 100)}%` }}
+            />
+          </span>
+          {mic.liveNote && (
+            <span className="rounded-lg bg-brand px-3 py-1 text-base font-bold text-white">
+              {italianOf(mic.liveNote.name)}
+              {mic.liveNote.octave}
+            </span>
           )}
         </div>
       )}
+
+      {/* Nessun riquadro di responso: la nota diventa verde o rossa sul
+          pentagramma e, se sbagliata, ci compare sotto il suo nome in piccolo.
+          Un banner sposterebbe la pagina e ti farebbe aspettare proprio mentre
+          stai suonando a tempo. */}
 
       {hintOpen ? (
         <Panel className="flex items-start gap-2 px-3 py-2.5 text-xs leading-relaxed text-ink2">
