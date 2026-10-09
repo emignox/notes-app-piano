@@ -21,8 +21,12 @@ export type Block =
   | { kind: 'staff'; notes: string[]; durations?: string[]; caption?: string }
   | { kind: 'chord'; root: string; quality: ChordQuality; inversion?: number; caption?: string }
   | { kind: 'keys'; highlight: string[]; from: string; to: string; caption?: string }
-  /** `secs` dà la durata nota per nota: serve solo quando è il ritmo il punto. */
-  | { kind: 'listen'; notes: string[]; together?: boolean; label: string; secs?: number[] }
+  /**
+   * `secs` dà la durata nota per nota: serve quando è il ritmo il punto.
+   * `vel` (0–1) e `holds` (secondi di tasto premuto) servono quando il punto è
+   * COME si suona: piano e forte, staccato e legato, pedale.
+   */
+  | { kind: 'listen'; notes: string[]; together?: boolean; label: string; secs?: number[]; vel?: number[]; holds?: number[] }
   | { kind: 'table'; head: [string, string]; rows: [string, string][] }
   | { kind: 'values'; ids: ValueId[]; caption?: string }
   | { kind: 'meter'; id: string }
@@ -50,7 +54,20 @@ export type Exercise =
   /** Quante alterazioni ha questa tonalità. */
   | { kind: 'key-signature'; tonic: string }
   /** Che grado è questo accordo nella tonalità. */
-  | { kind: 'degree'; tonic: string; degree: number };
+  | { kind: 'degree'; tonic: string; degree: number }
+  /**
+   * Domanda a scelta multipla scritta a mano: la PRIMA risposta è quella
+   * giusta (vengono mescolate a schermo). `explain` si mostra dopo, giusta o
+   * sbagliata che sia: è lì che la domanda insegna. `notes` disegna un esempio,
+   * `listen` lo fa sentire (`together` = accordo).
+   */
+  | { kind: 'quiz'; prompt: string; answers: string[]; explain?: string; notes?: string[]; listen?: string[]; together?: boolean }
+  /** Leggi la nota sul pentagramma. */
+  | { kind: 'read-note'; note: string; clef: 'treble' | 'bass' }
+  /** Due note sul pentagramma: che intervallo c'è (contando le righe e gli spazi). */
+  | { kind: 'read-interval'; from: string; to: string; clef: 'treble' | 'bass' }
+  /** Senti una scala: di che tipo è. */
+  | { kind: 'ear-scale'; root: string; options: ScaleType[] };
 
 export interface Lesson {
   id: string;
@@ -62,6 +79,8 @@ export interface Lesson {
   minutes: number;
   blocks: Block[];
   exercises: Exercise[];
+  /** Il brano del repertorio a cui la lezione prepara: alla fine si apre. */
+  piece?: string;
 }
 
 export interface Module {

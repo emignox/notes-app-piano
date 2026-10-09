@@ -285,7 +285,10 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
 
       <Card>
         <SectionTitle>Suono e vibrazione</SectionTitle>
-        <Row title="Volume">
+        <Row
+          title={`Volume ${Math.round(settings.volume * 100)}%`}
+          desc={settings.volume < 0.35 ? 'Basso: è il volume dell\'app, si somma a quello del telefono.' : undefined}
+        >
           <input
             type="range"
             min={0}

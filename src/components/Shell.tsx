@@ -18,6 +18,10 @@ export interface Intent {
   rhythm?: boolean;
   melodyId?: string;
   pieces?: boolean;
+  /** Un pezzo a due mani da aprire subito (dalle lezioni "Verso Chopin"). */
+  pieceId?: string;
+  /** Una sezione dello Studio (Orecchio). */
+  ear?: boolean;
 }
 
 export type Navigate = (tab: Tab, intent?: Intent) => void;

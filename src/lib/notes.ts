@@ -297,3 +297,20 @@ export function entryLabel(entry: NoteEntry, style: NameStyle = 'it'): string {
 export function entryFullLabel(entry: NoteEntry, style: NameStyle = 'it'): string {
   return fullLabel(entry.englishName, style);
 }
+
+/** Una nota qualsiasi pronta per il pentagramma (esempi ed esercizi delle lezioni). */
+export function noteEntry(note: string, clef: Clef, i = 0, duration?: string): NoteEntry {
+  const { acc } = parseNote(note);
+  return {
+    id: `${note}-${i}`,
+    clef,
+    pitch: note,
+    displayName: italianOf(note),
+    englishName: note,
+    vexflowKey: vexKeyOf(note),
+    accidental: accidentalKind(acc),
+    noteValue: duration === 'w' ? 'whole' : duration === 'h' ? 'half' : 'quarter',
+    toneNote: note,
+    stageId: 'lesson',
+  };
+}

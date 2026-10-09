@@ -154,7 +154,26 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
           label={block.label}
           onPlay={() => {
             suppressMic(2500);
-            if (block.together) audio.playChord(block.notes, 1.8);
+            if (block.vel || block.holds) {
+              // Quando il punto è COME si suona (piano/forte, staccato/legato,
+              // pedale) servono forza e durata del tasto nota per nota: è
+              // l'esecuzione "interpretata" che usano anche i pezzi.
+              const secs = block.notes.map((_, i) => block.secs?.[i] ?? 0.5);
+              let at = 0;
+              const events = block.notes.map((n, i) => {
+                const e = {
+                  notes: [n],
+                  at: block.together ? 0 : at,
+                  hold: block.holds?.[i] ?? secs[i] * 0.9,
+                  velocity: block.vel?.[i] ?? 0.7,
+                  stepIndex: i,
+                };
+                at += secs[i];
+                return e;
+              });
+              suppressMic(Math.ceil((at + 2) * 1000));
+              audio.playPerformance(events, events.map(e => e.at));
+            } else if (block.together) audio.playChord(block.notes, 1.8);
             // `secs` serve quando è il RITMO il contenuto dell'ascolto (due
             // crome contro una terzina): senza, tutte le note durerebbero
             // uguale e l'esempio non dimostrerebbe niente.

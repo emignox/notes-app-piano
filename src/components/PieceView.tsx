@@ -56,6 +56,8 @@ interface PieceViewProps {
     suppress: (ms?: number) => void;
   };
   notify: Notify;
+  /** Dalle lezioni: il pezzo da aprire subito. */
+  initialPieceId?: string;
 }
 
 const HANDS: { id: Hand; label: string }[] = [
@@ -137,6 +139,9 @@ function PieceChallenge({
   const [bpm, setBpm] = useState(piece.bpm);
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [playingWhole, setPlayingWhole] = useState(false);
+  /** La mano che si sta ascoltando: si accendono le sue note, anche se si studia l'altra. */
+  const [playingHand, setPlayingHand] = useState<Hand>('both');
   const [showKeys, setShowKeys] = useState(false);
   const [fingering, setFingering] = useState(true);
   const [done, setDone] = useState(false);
@@ -178,23 +183,30 @@ function PieceChallenge({
    * musica, non come un metronomo con le note sopra.
    */
   const listen = useCallback(
-    (which: Hand) => {
+    (which: Hand, whole = false) => {
+      // `whole`: dall'inizio alla fine del brano, a prescindere dalla sezione
+      // che si sta studiando. Ascoltare il pezzo intero è come lo si impara a
+      // desiderare, prima ancora di studiarlo a pezzi.
+      const from = whole ? 0 : part.from;
+      const to = whole ? piece.steps.length : part.to;
       const perf = buildPerformance(piece, which, bpm);
-      const t0 = perf.stepTimes[part.from] ?? 0;
+      const t0 = perf.stepTimes[from] ?? 0;
       const events = perf.events
-        .filter(e => e.stepIndex >= part.from && e.stepIndex < part.to)
+        .filter(e => e.stepIndex >= from && e.stepIndex < to)
         .map(e => ({ ...e, at: e.at - t0 }));
-      const times = perf.stepTimes.slice(part.from, part.to).map(t => t - t0);
+      const times = perf.stepTimes.slice(from, to).map(t => t - t0);
       if (events.length === 0) return;
 
       const length = Math.max(...events.map(e => e.at + e.hold));
       mic.suppress(Math.ceil((length + 1.2) * 1000));
       setPlaying(true);
+      setPlayingWhole(whole);
+      setPlayingHand(which);
       audio.playPerformance(
         events,
         times,
-        i => setPlayingIdx(part.from + i),
-        () => { setPlayingIdx(null); setPlaying(false); },
+        i => setPlayingIdx(from + i),
+        () => { setPlayingIdx(null); setPlaying(false); setPlayingWhole(false); },
       );
     },
     [piece, bpm, part.from, part.to, audio, mic],
@@ -515,6 +527,15 @@ function PieceChallenge({
             <Volume2 className="h-3.5 w-3.5" />
           </button>
         )}
+        {!playing && part.to - part.from < piece.steps.length && (
+          <button
+            type="button"
+            onClick={() => listen('both', true)}
+            className="whitespace-nowrap rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold text-ink2 active:scale-95"
+          >
+            tutto il brano
+          </button>
+        )}
         <div className="flex flex-1 items-center gap-2">
           <span className="text-[11px] tabular-nums text-ink3">{bpm}</span>
           <input
@@ -546,9 +567,10 @@ function PieceChallenge({
         activeIndex={playingIdx ?? idx}
         results={results}
         found={found}
-        hand={hand}
+        hand={playing ? playingHand : hand}
         fingering={fingering}
-        range={{ from: part.from, to: part.to }}
+        range={playingWhole ? { from: 0, to: piece.steps.length } : { from: part.from, to: part.to }}
+        listening={playingIdx !== null}
       />
 
       <Bar pct={doneCount / Math.max(1, total)} />
@@ -629,8 +651,8 @@ function PieceChallenge({
   );
 }
 
-export function PieceView({ progress, audio, mic, notify, section, onSection }: PieceViewProps) {
-  const [selected, setSelected] = useState<Piece | null>(null);
+export function PieceView({ progress, audio, mic, notify, section, onSection, initialPieceId }: PieceViewProps) {
+  const [selected, setSelected] = useState<Piece | null>(() => pieces.find(p => p.id === initialPieceId) ?? null);
 
   if (selected) {
     return (

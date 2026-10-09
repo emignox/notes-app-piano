@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Check, ChevronLeft, ChevronRight, RotateCcw, Volume2 } from 'lucide-react';
+import { BookOpen, Check, ChevronLeft, ChevronRight, Music, RotateCcw, Volume2 } from 'lucide-react';
 import type { Exercise, Lesson, Module } from '../data/lessons';
 import { allLessons, modules } from '../data/lessons';
 import type { AudioApi } from '../hooks/useAudio';
@@ -31,16 +31,20 @@ import {
 import type { ChordQuality } from '../lib/harmony';
 import { keyInfo, signatureText, diatonicChords } from '../lib/keys';
 import { METERS, VALUES, valueById, dotted } from '../lib/rhythm';
-import { englishOf, italianOf, parseNote, samePitchClass } from '../lib/notes';
+import { diatonicOf, englishOf, isOnLine, italianOf, landmarkHint, midiOf, noteEntry, parseNote, samePitchClass } from '../lib/notes';
 import { haptics } from '../lib/haptics';
 import { Bar, Btn, Card, Panel, Pill, Segmented, SectionTitle } from './ui';
 import { useScrollTop } from '../hooks/useScrollTop';
 import type { Notify } from './ui';
-import type { Intent } from './Shell';
+import type { Intent, Navigate } from './Shell';
+import { pieceById } from '../data/pieces';
 import { BlockView } from './LessonBlocks';
 import { ChordStaff } from './ChordStaff';
 import { PianoKeyboard } from './PianoKeyboard';
 import { NoteKeyboard } from './NoteKeyboard';
+import { NoteNameButtons } from './NoteNameButtons';
+import { Staff } from './Staff';
+import { RichText } from './RichText';
 import { glossario } from '../data/glossario';
 import { useGlossario } from '../hooks/useGlossario';
 import { TechniqueView } from './TechniqueView';
@@ -61,6 +65,7 @@ interface StudyViewProps {
   notify: Notify;
   /** Arrivando dal piano di oggi: la lezione, il ripasso o il ritmo da aprire. */
   intent?: Intent | null;
+  onNavigate: Navigate;
 }
 
 type Section = 'lezioni' | 'tecnica' | 'ritmo' | 'glossario';
@@ -98,9 +103,61 @@ const INTERVAL_NAMES: Record<number, string> = {
   12: 'ottava (12)',
 };
 
+/** Nomi degli intervalli contati sul pentagramma (lettere, non semitoni). */
+const GENERIC_INTERVALS = ['unisono', 'seconda', 'terza', 'quarta', 'quinta', 'sesta', 'settima', 'ottava'];
+
+interface Question {
+  prompt: string;
+  choices: Choice[];
+  play?: string[];
+  together?: boolean;
+  /** Note da mostrare sul pentagramma, con la loro chiave. */
+  show?: { notes: string[]; clef: 'treble' | 'bass' };
+  /** Spiegazione da leggere dopo la risposta. */
+  explain?: string;
+}
+
 /** Domanda a risposta multipla, oppure null se l'esercizio è da suonare. */
-function questionOf(ex: Exercise): { prompt: string; choices: Choice[]; play?: string[]; together?: boolean } | null {
+function questionOf(ex: Exercise): Question | null {
   switch (ex.kind) {
+    case 'quiz': {
+      const notes = ex.notes ?? [];
+      return {
+        prompt: ex.prompt,
+        choices: shuffle(ex.answers.map((label, i) => ({ label, correct: i === 0 }))),
+        play: ex.listen,
+        together: ex.together,
+        show: notes.length ? { notes, clef: notes.every(n => midiOf(n) < 60) ? 'bass' : 'treble' } : undefined,
+        explain: ex.explain,
+      };
+    }
+    case 'read-interval': {
+      const size = Math.abs(diatonicOf(ex.to) - diatonicOf(ex.from));
+      const near = [size - 2, size - 1, size + 1, size + 2].filter(n => n >= 1 && n <= 7);
+      return {
+        prompt: 'Che intervallo c\'è fra le due note? Conta righe e spazi, non i tasti.',
+        choices: shuffle([
+          { label: GENERIC_INTERVALS[size], correct: true },
+          ...shuffle(near).slice(0, 3).map(n => ({ label: GENERIC_INTERVALS[n], correct: false })),
+        ]),
+        play: [ex.from, ex.to],
+        show: { notes: [ex.from, ex.to], clef: ex.clef },
+        explain: size === 1
+          ? 'Grado congiunto: da una linea allo spazio subito accanto (o viceversa).'
+          : size % 2 === 0
+            ? `Le due note stanno ${isOnLine(ex.from, ex.clef) ? 'entrambe su una linea' : 'entrambe in uno spazio'}: terze, quinte e settime si riconoscono così.`
+            : `Una nota su una linea e l'altra in uno spazio: seconde, quarte, seste e ottave si riconoscono così.`,
+      };
+    }
+    case 'ear-scale': {
+      const right = ex.options[Math.floor(Math.random() * ex.options.length)];
+      return {
+        prompt: 'Che scala hai sentito?',
+        play: buildScale(ex.root, right),
+        choices: shuffle(ex.options.map(o => ({ label: o, correct: o === right }))),
+        explain: SCALE_EXPLAIN[right],
+      };
+    }
     case 'name-chord': {
       const rootKey = `${parseNote(ex.root).letter}${parseNote(ex.root).acc}4`;
       const base = chordSymbol(rootKey, ex.quality);
@@ -384,6 +441,37 @@ function ExerciseCard({
     );
   }
 
+  // ── Leggi la nota ──
+  if (ex.kind === 'read-note') {
+    const entry = noteEntry(ex.note, ex.clef);
+    const state = picked === null ? 'idle' : samePitchClass(picked, ex.note) ? 'correct' : 'wrong';
+    return (
+      <div className="space-y-3">
+        <p className="text-sm font-bold text-ink">Che nota è?</p>
+        <Staff entries={[entry]} activeIndex={0} answerState={state} variant="focus" />
+        <Panel className="p-2.5">
+          <NoteNameButtons
+            onSelect={n => {
+              if (picked !== null) return;
+              const ok = samePitchClass(n, ex.note);
+              setPicked(n);
+              if (ok) { haptics.correct(); audio.playNote(ex.note, 0.9); mic.suppress(1400); }
+              else haptics.wrong();
+              setTimeout(() => onDone(ok), ok ? 700 : 1400);
+            }}
+            disabled={picked !== null}
+            showAccidentals={!!parseNote(ex.note).acc}
+            correct={picked !== null ? ex.note : null}
+            picked={picked}
+          />
+        </Panel>
+        {state === 'wrong' && (
+          <p className="text-center text-xs text-ink3">{landmarkHint(ex.note, ex.clef)}</p>
+        )}
+      </div>
+    );
+  }
+
   if (!question) return null;
 
   // ── Esercizio a risposta multipla ──
@@ -391,6 +479,14 @@ function ExerciseCard({
   return (
     <div className="space-y-3">
       <p className="text-sm font-bold text-ink">{question.prompt}</p>
+
+      {question.show && (
+        <Staff
+          entries={question.show.notes.map((n, i) => noteEntry(n, question.show!.clef, i))}
+          activeIndex={-1}
+          variant="sequence"
+        />
+      )}
 
       {ex.kind === 'name-chord' && (
         <>
@@ -428,7 +524,9 @@ function ExerciseCard({
                 setPicked(c.label);
                 if (c.correct) haptics.correct();
                 else haptics.wrong();
-                setTimeout(() => onDone(c.correct), 900);
+                // Giusta e senza niente da leggere: si va avanti da soli.
+                // Altrimenti si resta qui finché non si è capito.
+                if (c.correct && !question.explain) setTimeout(() => onDone(true), 700);
               }}
               className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition-colors ${tone}`}
             >
@@ -438,10 +536,17 @@ function ExerciseCard({
         })}
       </div>
 
-      {chosen && !chosen.correct && (
-        <p className="text-center text-xs text-ink3">
-          La risposta giusta è evidenziata in verde.
-        </p>
+      {chosen && (!chosen.correct || question.explain) && (
+        <>
+          <Panel className="px-3 py-2.5 text-xs leading-relaxed text-ink2">
+            {!chosen.correct && <p className="font-semibold text-ink">La risposta giusta è evidenziata in verde.</p>}
+            {question.explain && <p className={chosen.correct ? '' : 'mt-1'}><RichText text={question.explain} /></p>}
+          </Panel>
+          <Btn full onClick={() => onDone(chosen.correct)}>
+            Continua
+            <ChevronRight className="h-4 w-4" />
+          </Btn>
+        </>
       )}
     </div>
   );
@@ -456,6 +561,7 @@ function LessonPlayer({
   mic,
   notify,
   onBack,
+  onNavigate,
 }: {
   lesson: Lesson;
   progress: ProgressApi;
@@ -463,6 +569,7 @@ function LessonPlayer({
   mic: MicApi;
   notify: Notify;
   onBack: () => void;
+  onNavigate: Navigate;
 }) {
   const [phase, setPhase] = useState<'lettura' | 'esercizi' | 'fine'>('lettura');
   useScrollTop(lesson.id);
@@ -552,7 +659,13 @@ function LessonPlayer({
               Quelli sbagliati torneranno nel ripasso di teoria, finché non ti vengono al primo colpo.
             </p>
           )}
-          <Btn onClick={onBack} className="px-6">
+          {lesson.piece && pieceById(lesson.piece) && (
+            <Btn full onClick={() => onNavigate('melody', { pieceId: lesson.piece })}>
+              <Music className="h-4 w-4" />
+              Ora il brano: {pieceById(lesson.piece)?.title}
+            </Btn>
+          )}
+          <Btn variant={lesson.piece ? 'soft' : 'primary'} onClick={onBack} className="px-6">
             Torna alle lezioni
           </Btn>
         </div>
@@ -917,7 +1030,7 @@ function ModuleCard({
   );
 }
 
-export function StudyView({ progress, audio, mic, notify, intent }: StudyViewProps) {
+export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: StudyViewProps) {
   const [section, setSection] = useState<Section>(intent?.rhythm ? 'ritmo' : 'lezioni');
   const [lesson, setLesson] = useState<Lesson | null>(
     () => (intent?.lessonId ? allLessons.find(l => l.id === intent.lessonId) ?? null : null),
@@ -949,6 +1062,7 @@ export function StudyView({ progress, audio, mic, notify, intent }: StudyViewPro
         mic={mic}
         notify={notify}
         onBack={() => setLesson(null)}
+        onNavigate={onNavigate}
       />
     );
   }

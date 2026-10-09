@@ -58,7 +58,7 @@ export default function App() {
   const navigate = useCallback((next: Tab, target?: Intent) => {
     setIntent(target ?? null);
     setNavKey(k => k + 1);
-    if (target?.pieces) setSongSection('pezzi');
+    if (target?.pieces || target?.pieceId) setSongSection('pezzi');
     else if (target?.melodyId) setSongSection('melodie');
     setTab(next);
     window.scrollTo({ top: 0 });
@@ -109,12 +109,15 @@ export default function App() {
   // colpa del browser o per l'interruttore silenzioso è farlo suonare.
   const testAudio = useCallback(async () => {
     const ok = await audio.test();
-    if (ok) {
+    if (ok && progress.settings.volume < 0.35) {
+      // Il cursore del volume dell'app è facile da abbassare e poi dimenticare.
+      notify('🔉', 'Volume dell\'app basso', `È al ${Math.round(progress.settings.volume * 100)}%: alzalo in Opzioni → Suono.`);
+    } else if (ok) {
       notify('🔊', 'Senti un Do?', 'Se no: interruttore silenzioso e volume del telefono.');
     } else {
       notify('🔇', 'Audio ancora bloccato', 'Tocca lo schermo e riprova.');
     }
-  }, [audio, notify]);
+  }, [audio, notify, progress.settings.volume]);
 
   const toggleMic = useCallback(async () => {
     if (pitch.isListening) {
@@ -186,10 +189,11 @@ export default function App() {
                 notify={notify}
                 section={songSection}
                 onSection={setSongSection}
+                initialPieceId={intent?.pieceId}
               />
             ))}
           {tab === 'technique' && (
-            <StudyView progress={progress} audio={audio} mic={mic} notify={notify} intent={intent} />
+            <StudyView progress={progress} audio={audio} mic={mic} notify={notify} intent={intent} onNavigate={navigate} />
           )}
           {tab === 'sprint' && (
             <SprintView
