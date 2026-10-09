@@ -9,7 +9,9 @@ import { Flame, Target, Trophy, Zap } from 'lucide-react';
 import { curriculum, stages, TOTAL_LEVELS } from '../data/curriculum';
 import { achievements as allAchievements } from '../lib/achievements';
 import { cardKey, mastery, tierOf, TIER_COLORS, TIER_LABELS } from '../lib/srs';
-import { describePosition } from '../lib/notes';
+import { describePosition, italianOf } from '../lib/notes';
+import type { MistakeKind } from '../lib/diagnosis';
+import { KIND_ADVICE, KIND_LABEL, diagnose, topConfusions } from '../lib/diagnosis';
 import { levelTitle } from '../lib/xp';
 import { shiftDay, todayKey } from '../lib/storage';
 import type { ProgressApi } from '../hooks/useProgress';
@@ -50,8 +52,23 @@ export function StatsView({ progress }: StatsViewProps) {
 
   const bestSprint = Math.max(0, ...Object.values(data.sprintBest));
   const perfectMelodies = Object.values(data.melodyBest).filter(v => v >= 100).length;
-  const totalMinutes = Object.values(data.studyMinutes).reduce((sum, n) => sum + n, 0);
-  const todayMinutes = data.studyMinutes[todayKey()] ?? 0;
+  const totalMinutes = Math.round(Object.values(data.studyMinutes).reduce((sum, n) => sum + n, 0));
+  const todayMinutes = Math.round(data.studyMinutes[todayKey()] ?? 0);
+
+  const unlockedNotes = useMemo(() => curriculum.slice(0, data.unlockedCount), [data.unlockedCount]);
+  const confusions = useMemo(() => topConfusions(unlockedNotes, data.confusions, 5), [unlockedNotes, data.confusions]);
+  // Tutti gli errori registrati, raggruppati per causa: quale abitudine correggere.
+  const kinds = useMemo(() => {
+    const count = new Map<MistakeKind, number>();
+    for (const note of unlockedNotes) {
+      for (const [given, n] of Object.entries(data.confusions[note.id] ?? {})) {
+        const m = diagnose(note, given, 'read');
+        if (m) count.set(m.kind, (count.get(m.kind) ?? 0) + n);
+      }
+    }
+    return [...count.entries()].sort((a, b) => b[1] - a[1]);
+  }, [unlockedNotes, data.confusions]);
+  const totalMistakes = kinds.reduce((sum, [, n]) => sum + n, 0);
   const stableLoops = Object.values(data.pieceLoops).filter(loop => loop.bpm > 0).length;
   const unlockedAch = allAchievements.filter(a => data.achievements.includes(a.id));
 
@@ -159,6 +176,36 @@ export function StatsView({ progress }: StatsViewProps) {
           </Panel>
         )}
       </Card>
+
+      {/* Errori tipici */}
+      {totalMistakes > 0 && (
+        <Card>
+          <SectionTitle hint="perché sbagli, non solo quanto">I tuoi errori tipici</SectionTitle>
+          <div className="space-y-1.5">
+            {kinds.slice(0, 4).map(([kind, n]) => (
+              <div key={kind} className="flex items-center gap-2">
+                <span className="w-36 flex-shrink-0 text-xs text-ink2">{KIND_LABEL[kind]}</span>
+                <Bar pct={n / totalMistakes} className="flex-1" color={kind === kinds[0][0] ? 'bg-amber-500' : 'bg-brand'} />
+                <span className="w-8 text-right text-[11px] tabular-nums text-ink3">{n}</span>
+              </div>
+            ))}
+          </div>
+          <Panel className="mt-3 px-3 py-2.5 text-xs leading-relaxed text-ink2">
+            <span className="font-bold text-ink">Da correggere per primo:</span> {KIND_ADVICE[kinds[0][0]]}
+          </Panel>
+          {confusions.length > 0 && (
+            <div className="mt-3 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink3">Le coppie che scambi</p>
+              {confusions.map(c => (
+                <p key={`${c.note.id}>${c.given}`} className="text-xs text-ink2">
+                  <span className="font-bold text-ink">{c.note.displayName}</span>
+                  {c.note.clef === 'bass' ? ' (basso)' : ''} → {italianOf(c.given)} · {c.count}×
+                </p>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Numeri */}
       <Card>

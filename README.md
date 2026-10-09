@@ -1,73 +1,41 @@
-# React + TypeScript + Vite
+# Piano Trainer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+App personale (PWA, solo front-end) per imparare a leggere e suonare il pianoforte, pensata per il telefono appoggiato sul leggio. Interfaccia in italiano.
 
-Currently, two official plugins are available:
+## Come insegna
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Lettura delle note** con ripetizione spaziata (SM-2 adattato: il voto lo dà il tempo di risposta), interleaving e note di riferimento. Una nota nuova arriva solo quando la precedente è automatica.
+- **Diagnosi degli errori**: non solo "sbagliato", ma perché (chiave scambiata, linea/spazio, una linea di troppo, alterazione, ottava). Quando la nota sbagliata torna, l'avviso ricorda l'errore; le coppie che confondi si allenano insieme.
+- **Piano di oggi** calcolato dallo stato: ripasso scaduto, nota nuova se sei pronto, teoria (errori da riprendere o prossima lezione), una canzone che sai già leggere.
+- **Teoria** a lezioni (spiego, mostro, faccio sentire, ti faccio provare); gli esercizi sbagliati tornano a scatole di Leitner finché non riescono al primo colpo.
+- **Ritmo**: lettura ritmica a livelli (figure, pause, crome, punto, controtempo, semicrome), battuta a tempo sullo schermo o con un tasto del piano, misurata in millisecondi sull'orologio audio.
+- **Canzoni e pezzi a due mani**, per sezioni e mani separate.
+- **Microfono**: rispondi suonando sul piano vero, ovunque. Monofonico (gli accordi si arpeggiano).
 
-## React Compiler
+## Comandi
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npm run dev          # sviluppo
+npm run build        # controllo dei tipi + build di produzione
+npm run lint
+npm run check:pezzi  # verifica i dati dei pezzi a due mani
+npm run bench:mic    # banco di prova del microfono (macOS)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Banco di prova del microfono
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+`npm run bench:mic` fa ascoltare al rilevatore (`src/lib/noteTracker.ts`) esecuzioni simulate con un pianoforte vero (i campioni Salamander che l'app usa per suonare): note singole, melodie, ribattute, pedale, bassi con un microfono economico, stanze rumorose, una voce che parla, 30 e 60 fotogrammi al secondo, 44,1 kHz. Conta note giuste, **false**, **doppie** e **perse**, la latenza e la precisione con cui viene datato l'attacco.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Ci sono due gruppi: *taratura* (su cui sono state scelte le soglie) e *convalida* (materiale mai usato per tarare). Per confrontare due versioni del rilevatore:
+
+```sh
+git show HEAD:src/lib/noteTracker.ts > /tmp/vecchio.ts
+npm run bench:mic -- --tracker=/tmp/vecchio.ts
 ```
+
+La prima volta scarica i campioni (~2 MB) in `scripts/mic-bench/.cache/` e li decodifica con `afconvert`; la voce di disturbo è generata con `say`.
+
+## Dati
+
+Tutto il progresso sta in `localStorage` (chiave `piano-trainer-v2`): nessun account, nessun server. Da *Opzioni → Dati* si esporta e si importa per cambiare telefono.

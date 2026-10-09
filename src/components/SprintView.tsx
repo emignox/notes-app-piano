@@ -119,7 +119,7 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
       const ms = performance.now() - askedAtRef.current;
       const correct = samePitchClass(given, note.englishName);
 
-      progress.answer(note.id, 'read', correct, ms, false);
+      progress.answer(note.id, 'read', correct, ms, false, given);
 
       if (correct) {
         setScore(s => s + 1);

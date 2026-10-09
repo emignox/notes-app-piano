@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Campioni e voce del banco di prova del microfono (si riscaricano da soli)
+scripts/mic-bench/.cache

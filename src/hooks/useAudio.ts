@@ -41,6 +41,24 @@ export interface SequenceNote {
   durationSec: number;
 }
 
+/** Un evento di una sequenza a tempo: clic del metronomo (accentato o no) o nota. */
+export interface TimelineEvent {
+  /** Secondi dall'inizio. */
+  at: number;
+  kind: 'click' | 'accent' | 'note';
+  note?: string;
+  dur?: number;
+}
+
+export interface TimelineHandle {
+  /**
+   * Quando si SENTE l'istante zero, in ms di Date.now(): include la latenza
+   * d'uscita. È il riferimento per misurare chi batte il tempo.
+   */
+  zero: number;
+  stop: () => void;
+}
+
 export function useAudio(volume = 0.8) {
   const [status, setStatus] = useState<AudioStatus>('idle');
   /** Il contesto sta davvero suonando: se è falso l'app è muta e va detto. */
@@ -372,6 +390,62 @@ export function useAudio(volume = 0.8) {
     [voice, clearTimers, withAudio],
   );
 
+  /**
+   * Suona una sequenza di clic e note sull'orologio AUDIO, che resta preciso
+   * al millisecondo anche quando il telefono è impegnato (setInterval, sotto
+   * carico, sgrana il tempo di decine di millisecondi: per un esercizio che
+   * giudica proprio la puntualità sarebbe barare). Si programma un pezzetto
+   * per volta, così fermarla a metà è immediato.
+   */
+  const playTimeline = useCallback(
+    (events: TimelineEvent[], onEnd?: () => void): TimelineHandle => {
+      clearTimers();
+      const playbackId = ++playbackIdRef.current;
+      const lead = 0.2;
+      const ctx = Tone.getContext();
+      const raw = ctx.rawContext as AudioContext;
+      const outLatency = (raw.outputLatency || raw.baseLatency || 0) * 1000;
+      const base = Tone.immediate() + lead;
+      const zero = Date.now() + lead * 1000 + outLatency;
+      const ordered = [...events].sort((a, b) => a.at - b.at);
+      const last = ordered.reduce((m, e) => Math.max(m, e.at + (e.dur ?? 0)), 0);
+      let index = 0;
+      let finished = false;
+
+      const schedule = () => {
+        if (playbackId !== playbackIdRef.current || finished) return;
+        const elapsed = Tone.immediate() - base;
+        while (index < ordered.length && ordered[index].at <= elapsed + 0.3) {
+          const e = ordered[index++];
+          const when = base + e.at;
+          try {
+            if (e.kind === 'note') voice()?.triggerAttackRelease(e.note ?? 'C5', e.dur ?? 0.3, when, 0.7);
+            else clickRef.current?.triggerAttackRelease(e.kind === 'accent' ? 'C6' : 'C5', 0.03, when);
+          } catch {
+            /* un evento perso non deve fermare gli altri */
+          }
+        }
+        if (elapsed >= last + 0.1) {
+          finished = true;
+          clearInterval(timer);
+          if (playbackId === playbackIdRef.current) onEnd?.();
+        }
+      };
+      const timer = setInterval(schedule, 40);
+      timersRef.current.push(timer);
+      withAudio(schedule);
+
+      return {
+        zero,
+        stop: () => {
+          if (playbackId === playbackIdRef.current) playbackIdRef.current += 1;
+          clearInterval(timer);
+        },
+      };
+    },
+    [voice, clearTimers, withAudio],
+  );
+
   const stopSequence = useCallback(() => {
     playbackIdRef.current += 1;
     clearTimers();
@@ -466,6 +540,7 @@ export function useAudio(volume = 0.8) {
     playSequence,
     playChordSequence,
     playPerformance,
+    playTimeline,
     stopSequence,
     startMetronome,
     stopMetronome,

@@ -9,10 +9,10 @@
 // memoria: chiedono di APPLICARE la formula appena letta.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useMemo, useState } from 'react';
-import { BookOpen, Check, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, Check, ChevronLeft, ChevronRight, RotateCcw, Volume2 } from 'lucide-react';
 import type { Exercise, Lesson, Module } from '../data/lessons';
-import { modules } from '../data/lessons';
+import { allLessons, modules } from '../data/lessons';
 import type { AudioApi } from '../hooks/useAudio';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
@@ -36,6 +36,7 @@ import { haptics } from '../lib/haptics';
 import { Bar, Btn, Card, Panel, Pill, Segmented, SectionTitle } from './ui';
 import { useScrollTop } from '../hooks/useScrollTop';
 import type { Notify } from './ui';
+import type { Intent } from './Shell';
 import { BlockView } from './LessonBlocks';
 import { ChordStaff } from './ChordStaff';
 import { PianoKeyboard } from './PianoKeyboard';
@@ -58,6 +59,8 @@ interface StudyViewProps {
   audio: AudioApi;
   mic: MicApi;
   notify: Notify;
+  /** Arrivando dal piano di oggi: la lezione, il ripasso o il ritmo da aprire. */
+  intent?: Intent | null;
 }
 
 type Section = 'lezioni' | 'tecnica' | 'ritmo' | 'glossario';
@@ -270,6 +273,12 @@ function ExerciseCard({
   const sequence = useMemo(() => notesToPlay(ex), [ex]);
   const [picked, setPicked] = useState<string | null>(null);
   const [step, setStep] = useState(0);
+  // Errori sulla nota da trovare adesso: decidono quanto aiuto mostrare.
+  const [stepMistakes, setStepMistakes] = useState(0);
+  const [wrongKey, setWrongKey] = useState<string | null>(null);
+  const mistakesRef = useRef(0);
+  const [helped, setHelped] = useState(false);
+  const micBaseRef = useRef(mic.confirmedNote?.id ?? 0);
 
   const play = useCallback(() => {
     if (!question?.play) return;
@@ -278,23 +287,78 @@ function ExerciseCard({
     else audio.playSequence(question.play.map(n => ({ toneNote: n, durationSec: 0.6 })));
   }, [question, audio, mic]);
 
+  /**
+   * Una nota dell'esercizio da suonare. Prima si prova senza aiuti: costruire
+   * l'accordo è l'esercizio. Dopo un errore compare il nome della nota, dopo
+   * due anche il tasto. Un solo errore basta perché l'esercizio torni nel
+   * ripasso: "alla fine ci sono arrivato" non è ancora saperlo.
+   */
+  const pressNote = useCallback(
+    (n: string, fromMic: boolean) => {
+      if (!sequence || step >= sequence.length) return;
+      const target = sequence[step];
+      if (samePitchClass(n, target)) {
+        haptics.correct();
+        if (!fromMic) audio.playNote(n, 0.7);
+        const next = step + 1;
+        setStep(next);
+        setStepMistakes(0);
+        setWrongKey(null);
+        if (next >= sequence.length) setTimeout(() => onDone(mistakesRef.current === 0), 500);
+      } else {
+        haptics.wrong();
+        mistakesRef.current += 1;
+        setHelped(true);
+        setStepMistakes(m => m + 1);
+        setWrongKey(n);
+      }
+    },
+    [sequence, step, audio, onDone],
+  );
+
+  // Col microfono acceso si suona sul piano vero, una nota alla volta.
+  useEffect(() => {
+    if (!sequence || !mic.isListening || !mic.confirmedNote) return;
+    if (mic.confirmedNote.id <= micBaseRef.current) return;
+    micBaseRef.current = mic.confirmedNote.id;
+    pressNote(`${mic.confirmedNote.note.name}${mic.confirmedNote.note.octave}`, true);
+  }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Esercizio da suonare ──
   if (sequence) {
     const target = sequence[step];
     const octaves = sequence.map(n => parseNote(n).octave);
     const done = step >= sequence.length;
+    const found = sequence.slice(0, step);
     return (
       <div className="space-y-3">
         <p className="text-sm font-bold text-ink">{exerciseTitle(ex)}</p>
         <Panel className="flex items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-ink3">nota {step + 1} di {sequence.length}</p>
-            <p className="text-xl font-black text-ink">{done ? 'fatto!' : italianOf(target)}</p>
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-wider text-ink3">
+              {done ? 'completo' : `nota ${step + 1} di ${sequence.length}`}
+            </p>
+            <p className="text-xl font-black text-ink">
+              {done
+                ? helped ? 'fatto' : 'giusto al primo colpo!'
+                : stepMistakes > 0 ? italianOf(target) : found.length ? `${found.map(f => italianOf(f)).join(' · ')} · ?` : '?'}
+            </p>
+            {!done && stepMistakes === 0 && (
+              <p className="text-[11px] text-ink3">ricavala dalla formula: niente aiuti al primo tentativo</p>
+            )}
+            {wrongKey && !done && (
+              <p className="text-[11px] text-red-400">{italianOf(wrongKey)} no — riprova</p>
+            )}
           </div>
           <Btn
             variant="soft"
             className="px-3 py-2"
+            title="Ascolta com'è (vale come aiuto)"
             onClick={() => {
+              if (step < sequence.length) {
+                mistakesRef.current += 1;
+                setHelped(true);
+              }
               mic.suppress(Math.ceil(sequence.length * 500 + 800));
               audio.playSequence(sequence.map(n => ({ toneNote: n, durationSec: 0.45 })));
             }}
@@ -306,19 +370,9 @@ function ExerciseCard({
           <PianoKeyboard
             from={`C${Math.min(...octaves)}`}
             to={`B${Math.max(...octaves)}`}
-            onPress={n => {
-              if (done) return;
-              if (samePitchClass(n, target)) {
-                haptics.correct();
-                audio.playNote(n, 0.7);
-                const next = step + 1;
-                setStep(next);
-                if (next >= sequence.length) onDone(true);
-              } else {
-                haptics.wrong();
-              }
-            }}
-            hint={done ? [] : [target]}
+            onPress={n => pressNote(n, false)}
+            hint={done ? found : stepMistakes >= 2 ? [...found, target] : found}
+            wrong={wrongKey}
             labels="c"
             compact
           />
@@ -493,6 +547,11 @@ function LessonPlayer({
           <p className="text-sm text-ink2">
             {right}/{lesson.exercises.length} esercizi giusti · +{XP_PER_LESSON} XP
           </p>
+          {right < lesson.exercises.length && (
+            <p className="max-w-xs text-xs text-ink3">
+              Quelli sbagliati torneranno nel ripasso di teoria, finché non ti vengono al primo colpo.
+            </p>
+          )}
           <Btn onClick={onBack} className="px-6">
             Torna alle lezioni
           </Btn>
@@ -703,6 +762,90 @@ function ScaleRow({
   );
 }
 
+// ── Ripasso della teoria ────────────────────────────────────────────────────
+
+/**
+ * Gli esercizi sbagliati nelle lezioni tornano qui, mescolati fra lezioni
+ * diverse (riconoscere QUALE regola serve è metà dell'esercizio). Chi sbaglia
+ * di nuovo rivede l'esercizio a fine giro, prima di chiudere.
+ */
+function TheoryReview({
+  ids,
+  progress,
+  audio,
+  mic,
+  onBack,
+}: {
+  ids: string[];
+  progress: ProgressApi;
+  audio: AudioApi;
+  mic: MicApi;
+  onBack: () => void;
+}) {
+  useScrollTop('ripasso-teoria');
+  const [queue, setQueue] = useState(() =>
+    shuffle(ids)
+      .map(id => {
+        const [lessonId, idx] = id.split('#');
+        const lesson = allLessons.find(l => l.id === lessonId);
+        const ex = lesson?.exercises[Number(idx)];
+        return lesson && ex ? { id, lesson, ex, retry: false } : null;
+      })
+      .filter((x): x is { id: string; lesson: Lesson; ex: Exercise; retry: boolean } => x !== null),
+  );
+  const [pos, setPos] = useState(0);
+  const [right, setRight] = useState(0);
+  const firstRound = useMemo(() => queue.filter(q => !q.retry).length, [queue]);
+
+  const onDone = useCallback(
+    (correct: boolean) => {
+      const item = queue[pos];
+      if (!item) return;
+      progress.recordTheory(item.id, correct);
+      if (correct && !item.retry) setRight(r => r + 1);
+      if (!correct && !item.retry) setQueue(q => [...q, { ...item, retry: true }]);
+      setPos(p => p + 1);
+    },
+    [queue, pos, progress],
+  );
+
+  const item = queue[pos];
+  return (
+    <Card className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBack} className="rounded-lg bg-surface2 p-2 text-ink2 active:scale-95">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-ink">Ripasso di teoria</p>
+          <p className="truncate text-xs text-ink3">
+            {item ? `dalla lezione: ${item.lesson.title}${item.retry ? ' · di nuovo' : ''}` : 'finito'}
+          </p>
+        </div>
+      </div>
+      {item ? (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold tabular-nums text-ink3">{pos + 1}/{queue.length}</span>
+            <Bar pct={pos / queue.length} className="flex-1" />
+          </div>
+          <ExerciseCard key={pos} ex={item.ex} audio={audio} mic={mic} onDone={onDone} />
+        </>
+      ) : (
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <div className="text-5xl">{right === firstRound ? '🏆' : '🔁'}</div>
+          <p className="text-xl font-black text-ink">{right}/{firstRound} giusti al primo colpo</p>
+          <p className="max-w-xs text-sm text-ink2">
+            Quelli giusti torneranno fra qualche giorno, sempre più distanti, finché non escono dal ripasso.
+            Quelli sbagliati tornano domani.
+          </p>
+          <Btn onClick={onBack} className="px-6">Torna alle lezioni</Btn>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── Elenco moduli ───────────────────────────────────────────────────────────
 
 function ModuleCard({
@@ -774,12 +917,28 @@ function ModuleCard({
   );
 }
 
-export function StudyView({ progress, audio, mic, notify }: StudyViewProps) {
-  const [section, setSection] = useState<Section>('lezioni');
-  const [lesson, setLesson] = useState<Lesson | null>(null);
+export function StudyView({ progress, audio, mic, notify, intent }: StudyViewProps) {
+  const [section, setSection] = useState<Section>(intent?.rhythm ? 'ritmo' : 'lezioni');
+  const [lesson, setLesson] = useState<Lesson | null>(
+    () => (intent?.lessonId ? allLessons.find(l => l.id === intent.lessonId) ?? null : null),
+  );
+  const [reviewIds, setReviewIds] = useState<string[] | null>(() => (intent?.review ? progress.theoryDue : null));
 
   const done = progress.data.lessonsDone;
   const totalLessons = modules.reduce((n, m) => n + m.lessons.length, 0);
+  const due = progress.theoryDue;
+
+  if (reviewIds && reviewIds.length > 0) {
+    return (
+      <TheoryReview
+        ids={reviewIds}
+        progress={progress}
+        audio={audio}
+        mic={mic}
+        onBack={() => setReviewIds(null)}
+      />
+    );
+  }
 
   if (lesson) {
     return (
@@ -821,6 +980,18 @@ export function StudyView({ progress, audio, mic, notify }: StudyViewProps) {
               <Pill tone="brand">{done.length}/{totalLessons}</Pill>
             </div>
           </Card>
+          {due.length > 0 && (
+            <Card className="border-amber-500/40">
+              <div className="flex items-center gap-3">
+                <RotateCcw className="h-5 w-5 flex-shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-ink">Ripasso: {due.length} {due.length === 1 ? 'esercizio' : 'esercizi'}</p>
+                  <p className="text-xs text-ink2">Quelli sbagliati nelle lezioni tornano finché non li sai al primo colpo.</p>
+                </div>
+              </div>
+              <Btn full className="mt-3" onClick={() => setReviewIds(due)}>Ripassa ora</Btn>
+            </Card>
+          )}
           {modules.map(m => (
             <ModuleCard key={m.id} mod={m} done={done} onOpen={setLesson} />
           ))}
@@ -831,7 +1002,7 @@ export function StudyView({ progress, audio, mic, notify }: StudyViewProps) {
         <TechniqueView progress={progress} audio={audio} mic={mic} notify={notify} />
       )}
 
-      {section === 'ritmo' && <RhythmTrainer audio={audio} progress={progress} />}
+      {section === 'ritmo' && <RhythmTrainer audio={audio} progress={progress} mic={mic} notify={notify} />}
 
       {section === 'glossario' && <Glossary audio={audio} mic={mic} />}
     </div>

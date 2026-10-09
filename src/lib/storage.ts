@@ -36,8 +36,6 @@ export interface Settings {
   highContrast: boolean;
   /** Disattiva animazioni non essenziali anche senza preferenza di sistema. */
   reducedMotion: boolean;
-  /** Durante gli esercizi nasconde informazioni secondarie. */
-  focusMode: boolean;
 }
 
 export const defaultSettings: Settings = {
@@ -59,13 +57,32 @@ export const defaultSettings: Settings = {
   largeText: false,
   highContrast: false,
   reducedMotion: false,
-  focusMode: false,
 };
 
 export interface DayStat {
   answers: number;
   correct: number;
   xp: number;
+  /** Esercizi di teoria fatti nel giorno (lezioni, ripasso, ritmo). */
+  theory?: number;
+  /** Canzoni e loop dei pezzi suonati fino in fondo. */
+  songs?: number;
+}
+
+/**
+ * Ripasso spaziato della teoria, a scatole (Leitner): un esercizio sbagliato
+ * entra nella scatola 0 e torna subito; ogni risposta giusta lo sposta nella
+ * scatola dopo, che torna più tardi. Dall'ultima esce: è imparato.
+ */
+export interface TheoryBox {
+  box: number;
+  due: number;
+}
+
+/** Livello della lettura ritmica e quante figure pulite di fila a quel livello. */
+export interface RhythmProgress {
+  level: number;
+  clean: number;
 }
 
 export interface Persisted {
@@ -95,8 +112,20 @@ export interface Persisted {
   /** Valutazione iniziale completata e relativo punteggio (0–5). */
   onboardingDone: boolean;
   placementScore: number;
-  /** Minuti di attività registrati per giorno. */
+  /**
+   * Minuti di studio per giorno, misurati davvero: tempo passato a usare
+   * l'app con pause brevi (sotto il minuto) fra un gesto e l'altro.
+   */
   studyMinutes: Record<string, number>;
+  /**
+   * Confusioni per nota: id della nota → nome dato al suo posto → quante volte.
+   * Dice PERCHÉ sbagli (chiave scambiata, un gradino, l'alterazione ignorata),
+   * e permette di allenare insieme le due note che si confondono.
+   */
+  confusions: Record<string, Record<string, number>>;
+  /** Esercizi di teoria sbagliati e quando tornano. Chiave: `lezione#indice`. */
+  theoryBoxes: Record<string, TheoryBox>;
+  rhythm: RhythmProgress;
   /** Miglior risultato dei loop: chiave pezzo/sezione/mano → serie perfetta e BPM. */
   pieceLoops: Record<string, { perfectRuns: number; bpm: number }>;
   settings: Settings;
@@ -140,6 +169,9 @@ export function emptyState(): Persisted {
     onboardingDone: false,
     placementScore: 0,
     studyMinutes: {},
+    confusions: {},
+    theoryBoxes: {},
+    rhythm: { level: 1, clean: 0 },
     pieceLoops: {},
     settings: { ...defaultSettings },
   };
@@ -179,6 +211,9 @@ export function load(): Persisted {
         onboardingDone: parsed.onboardingDone ?? (parsed.answers ?? 0) > 0,
         placementScore: parsed.placementScore ?? 0,
         studyMinutes: parsed.studyMinutes ?? {},
+        confusions: parsed.confusions ?? {},
+        theoryBoxes: parsed.theoryBoxes ?? {},
+        rhythm: parsed.rhythm ?? { level: 1, clean: 0 },
         pieceLoops: parsed.pieceLoops ?? {},
         settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
       };

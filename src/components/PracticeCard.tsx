@@ -11,11 +11,14 @@
 //    riferimento, posizione, gruppo di tasti neri), non solo la risposta;
 //  · l'errore mostra dov'era la nota e poi si va avanti da soli: con le mani
 //    sul piano non si può interrompere tutto per premere un tasto sullo
-//    schermo. La nota sbagliata torna comunque fra poche domande.
+//    schermo. La nota sbagliata torna fra poche domande, e QUANDO torna porta
+//    con sé la diagnosi dell'errore di prima ("l'hai letta come in chiave di
+//    violino"): è il momento in cui la spiegazione serve, perché la stai per
+//    usare.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Lightbulb, Volume2 } from 'lucide-react';
+import { AlertTriangle, Lightbulb, Volume2 } from 'lucide-react';
 import type { AnswerState, Direction, NoteEntry } from '../types';
 import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
 import type { Settings } from '../lib/storage';
@@ -50,7 +53,10 @@ export interface PracticeCardProps {
   liveNote: LiveNote | null;
   micLevel: number;
   confirmedNote: ConfirmedNote | null;
-  onResult: (correct: boolean, ms: number, usedHint: boolean) => void;
+  /** `given`: la risposta data (nome o tasto), per capire che errore è. */
+  onResult: (correct: boolean, ms: number, usedHint: boolean, given: string) => void;
+  /** Diagnosi dell'errore fatto su questa nota poco fa, da ricordare ora. */
+  warning?: string;
   onToggleInput: () => void;
   playNote: (toneNote: string, duration?: number) => void;
   playError: () => void;
@@ -92,6 +98,7 @@ export function PracticeCard({
   playNote,
   playError,
   suppressMic,
+  warning,
 }: PracticeCardProps) {
   const [state, setState] = useState<AnswerState>('idle');
   const [picked, setPicked] = useState<string | null>(null);
@@ -116,11 +123,11 @@ export function PracticeCard({
   useEffect(() => () => { if (nextRef.current) clearTimeout(nextRef.current); }, []);
 
   const goNext = useCallback(
-    (correct: boolean, ms: number, hinted: boolean) => {
+    (correct: boolean, ms: number, hinted: boolean, given: string) => {
       if (doneRef.current) return;
       doneRef.current = true;
       if (nextRef.current) clearTimeout(nextRef.current);
-      onResult(correct, ms, hinted);
+      onResult(correct, ms, hinted, given);
     },
     [onResult],
   );
@@ -169,19 +176,19 @@ export function PracticeCard({
           playNote(note.toneNote);
           suppressMic(1800);
         }
-        nextRef.current = setTimeout(() => goNext(true, ms, usedHint), NEXT_OK);
+        nextRef.current = setTimeout(() => goNext(true, ms, usedHint, answer), NEXT_OK);
       } else {
         haptics.wrong();
         if (micActive) {
           // Suonando non si interrompe con un verso dall'altoparlante: oltre a
           // spezzare la musica, obbligherebbe a restare sordi mezzo secondo per
           // non risentirlo — e in quel mezzo secondo si perde la nota dopo.
-          nextRef.current = setTimeout(() => goNext(false, ms, usedHint), NEXT_WRONG_MIC);
+          nextRef.current = setTimeout(() => goNext(false, ms, usedHint, answer), NEXT_WRONG_MIC);
         } else {
           playError();
           suppressMic(600);
           if (revealSound) setTimeout(() => playNote(note.toneNote), 300);
-          nextRef.current = setTimeout(() => goNext(false, ms, usedHint), NEXT_WRONG_TAP);
+          nextRef.current = setTimeout(() => goNext(false, ms, usedHint, answer), NEXT_WRONG_TAP);
         }
       }
     },
@@ -292,6 +299,14 @@ export function PracticeCard({
           piccolo sotto la nota sul pentagramma, dov'è il problema. Un banner
           che dice "Era Fa" occupa spazio, sposta il resto della pagina e ti fa
           aspettare — e se stai suonando ti fa perdere il tempo della musica. */}
+
+      {/* La nota torna dopo un errore: prima di rispondere, perché era sbagliata */}
+      {warning && state === 'idle' && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-ink2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+          <span>{warning}</span>
+        </div>
+      )}
 
       {/* Aiuto: spiega il ragionamento, non solo la risposta */}
       {hintOpen ? (

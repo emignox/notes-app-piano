@@ -3,16 +3,61 @@
 // interruttore esiste fa parte dell'imparare.
 
 import { useRef, useState } from 'react';
-import { Download, Moon, RotateCcw, Sun, Upload, Volume2 } from 'lucide-react';
+import { Download, Mic, MicOff, Moon, RotateCcw, Sun, Upload, Volume2 } from 'lucide-react';
 import type { NameStyle } from '../lib/notes';
+import { italianOf } from '../lib/notes';
+import type { LiveNote } from '../hooks/usePitchDetection';
 import type { Settings } from '../lib/storage';
 import { exportState, importState } from '../lib/storage';
 import type { ProgressApi } from '../hooks/useProgress';
-import { Btn, Card, Panel, SectionTitle } from './ui';
+import { Bar, Btn, Card, Panel, Pill, SectionTitle } from './ui';
 
 interface SettingsViewProps {
   progress: ProgressApi;
   onTestSound: () => void;
+  mic: { isListening: boolean; level: number; liveNote: LiveNote | null };
+  onToggleMic: () => void;
+}
+
+/**
+ * Prova del microfono. Stava nella schermata di avvio, dove occupava spazio
+ * ogni giorno per una cosa che serve una volta: qui si controlla quando serve.
+ */
+function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggleMic'>) {
+  const strong = mic.level > 0.08;
+  return (
+    <Card>
+      <SectionTitle>Microfono</SectionTitle>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs leading-relaxed text-ink3">
+          Con il microfono rispondi suonando sul piano vero, in tutti gli esercizi. Funziona una nota alla volta:
+          gli accordi si arpeggiano.
+        </p>
+        <Pill tone={mic.isListening ? (strong ? 'good' : 'warn') : 'neutral'}>
+          {mic.isListening ? (strong ? 'segnale pronto' : 'suona una nota') : 'spento'}
+        </Pill>
+      </div>
+      {mic.isListening && (
+        <div className="mt-3 space-y-2">
+          <Bar pct={Math.min(1, mic.level * 3.2)} color={strong ? 'bg-emerald-500' : 'bg-amber-500'} />
+          <div className="flex items-center justify-between text-xs text-ink2">
+            <span>
+              {mic.liveNote ? `Sento: ${italianOf(mic.liveNote.name)}${mic.liveNote.octave}` : 'In ascolto…'}
+            </span>
+            <span className="tabular-nums">livello {Math.round(mic.level * 100)}%</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-ink3">
+            Suona tre note a volume normale e controlla che il nome sia giusto. Se la barra resta bassa avvicina il
+            telefono; se si muove anche nel silenzio, allontanalo dalla fonte di rumore.
+          </p>
+        </div>
+      )}
+      <Btn variant={mic.isListening ? 'soft' : 'primary'} full className="mt-3" onClick={onToggleMic}>
+        {mic.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        {mic.isListening ? 'Spegni il microfono' : 'Accendi e prova'}
+      </Btn>
+    </Card>
+  );
 }
 
 function Row({
@@ -118,7 +163,7 @@ function NumberStepper({
   );
 }
 
-export function SettingsView({ progress, onTestSound }: SettingsViewProps) {
+export function SettingsView({ progress, onTestSound, mic, onToggleMic }: SettingsViewProps) {
   const { settings, setSettings } = progress;
   const [message, setMessage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -234,10 +279,9 @@ export function SettingsView({ progress, onTestSound }: SettingsViewProps) {
         <Row title="Riduci animazioni" desc="Evita movimenti non essenziali durante lo studio.">
           <Toggle on={settings.reducedMotion} onChange={v => set('reducedMotion', v)} />
         </Row>
-        <Row title="Modalità concentrazione" desc="Riduce decorazioni e informazioni secondarie negli esercizi.">
-          <Toggle on={settings.focusMode} onChange={v => set('focusMode', v)} />
-        </Row>
       </Card>
+
+      <MicCheck mic={mic} onToggleMic={onToggleMic} />
 
       <Card>
         <SectionTitle>Suono e vibrazione</SectionTitle>

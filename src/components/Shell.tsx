@@ -8,6 +8,20 @@ import { Ring } from './ui';
 
 export type Tab = 'practice' | 'melody' | 'technique' | 'sprint' | 'stats' | 'settings';
 
+/**
+ * Dove portare l'utente dentro una scheda: il piano di oggi non dice "vai allo
+ * Studio", apre la lezione giusta (o il ripasso, o la canzone).
+ */
+export interface Intent {
+  lessonId?: string;
+  review?: boolean;
+  rhythm?: boolean;
+  melodyId?: string;
+  pieces?: boolean;
+}
+
+export type Navigate = (tab: Tab, intent?: Intent) => void;
+
 interface TopBarProps {
   level: LevelInfo;
   dayStreak: number;

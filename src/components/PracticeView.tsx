@@ -4,21 +4,36 @@
 //
 // Dentro la sessione, una risposta sbagliata NON viene archiviata: la carta
 // rientra in coda qualche domanda dopo. È il "riapprendimento" di Anki, ed è la
-// differenza fra rivedere un errore e impararlo davvero.
+// differenza fra rivedere un errore e impararlo davvero. Quando rientra porta
+// con sé la diagnosi dell'errore, e alla fine si allenano insieme la nota
+// sbagliata e quella con cui l'hai confusa.
+//
+// La schermata di avvio è il PIANO DI OGGI, calcolato dal tuo stato: ripasso
+// (le carte davvero scadute), nota nuova se sei pronto, teoria (gli errori da
+// riprendere o la lezione dopo), musica (la canzone che puoi già leggere).
+// Ogni passo apre direttamente la cosa giusta.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Play, Sparkles, Target, Timer } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { BookOpen, Check, ChevronRight, Eye, Music, Play, Sparkles, Target, Timer, Unlock } from 'lucide-react';
+import type { NoteEntry } from '../types';
 import type { Question } from '../lib/session';
 import { buildSession, weakestNotes } from '../lib/session';
 import { curriculum, noteById, TOTAL_LEVELS } from '../data/curriculum';
+import { modules } from '../data/lessons';
+import { melodies } from '../data/melodies';
 import { levelTitle } from '../lib/xp';
-import { parseNote } from '../lib/notes';
+import { italianOf, parseNote } from '../lib/notes';
+import type { Card as SrsCard } from '../lib/srs';
+import { cardKey, SLOW_MS } from '../lib/srs';
+import { KIND_LABEL, confusionPartner, diagnose, topConfusions } from '../lib/diagnosis';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
-import { Bar, Btn, Card, Panel, Pill } from './ui';
+import { Btn, Card, Panel, Pill } from './ui';
 import type { Notify } from './ui';
+import type { Intent, Navigate } from './Shell';
 import { NoteIntro } from './NoteIntro';
 import { PracticeCard } from './PracticeCard';
 import type { SessionLogEntry } from './SessionSummary';
@@ -36,12 +51,70 @@ interface PracticeViewProps {
     suppress: (ms?: number) => void;
   };
   notify: Notify;
-  onNavigate: (tab: 'technique' | 'melody') => void;
+  onNavigate: Navigate;
 }
 
 type Phase = 'start' | 'intro' | 'running' | 'summary';
 
 const MAX_REQUEUE = 2;
+
+/** Che cosa manca alla nota più recente per far sbloccare la prossima. */
+function readiness(card: SrsCard | undefined): string {
+  if (!card || card.reps === 0) return 'ancora da provare';
+  const need: string[] = [];
+  if (card.correct < 3) need.push(`${3 - card.correct} ${3 - card.correct === 1 ? 'risposta giusta' : 'risposte giuste'}`);
+  if (card.streak < 2) need.push('due giuste di fila');
+  if (card.avgMs >= SLOW_MS + 1500) need.push('un po\' più di sicurezza');
+  return need.length ? `mancano ${need.join(', ')}` : 'quasi pronta';
+}
+
+/** Che cosa fa un passo del piano quando lo tocchi. */
+type PlanAction =
+  | { kind: 'session' }
+  | { kind: 'unlock' }
+  | { kind: 'go'; tab: 'technique' | 'melody'; intent: Intent };
+
+interface PlanStep {
+  key: string;
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+  done: boolean;
+  action: PlanAction;
+}
+
+function PlanRow({ step, n, isNext, onRun }: { step: PlanStep; n: number; isNext: boolean; onRun: (a: PlanAction) => void }) {
+  const Icon = step.icon;
+  return (
+    <button
+      type="button"
+      onClick={() => onRun(step.action)}
+      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors active:scale-[0.99] ${
+        step.done
+          ? 'border-emerald-500/40 bg-emerald-500/10'
+          : isNext
+            ? 'border-brand bg-brand/10'
+            : 'border-line bg-surface/70 hover:border-brand/50'
+      }`}
+    >
+      <span
+        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-black ${
+          step.done ? 'bg-emerald-500 text-white' : isNext ? 'bg-brand text-white' : 'bg-surface2 text-ink3'
+        }`}
+      >
+        {step.done ? <Check className="h-4 w-4" /> : n}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-sm font-bold text-ink">
+          <Icon className="h-3.5 w-3.5 flex-shrink-0 text-ink3" />
+          <span className="truncate">{step.title}</span>
+        </span>
+        <span className="mt-0.5 block text-xs leading-snug text-ink3">{step.detail}</span>
+      </span>
+      {isNext && !step.done && <ChevronRight className="h-4 w-4 flex-shrink-0 text-brand" />}
+    </button>
+  );
+}
 
 export function PracticeView({ progress, audio, mic, notify, onNavigate }: PracticeViewProps) {
   const { data, settings, unlockedNotes, newestNote, streak } = progress;
@@ -55,6 +128,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
   const logRef = useRef<SessionLogEntry[]>([]);
   const [log, setLog] = useState<SessionLogEntry[]>([]);
   const requeuesRef = useRef<Record<string, number>>({});
+  /** Diagnosi dell'ultimo errore per nota: la si ricorda quando la nota torna. */
+  const [warnings, setWarnings] = useState<Record<string, string>>({});
 
   const weak = useMemo(
     () => weakestNotes(unlockedNotes, data.cards, 6),
@@ -62,51 +137,78 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
   );
   const weakIds = weak.map(w => w.note.id);
 
+  const confusions = useMemo(
+    () => topConfusions(unlockedNotes, data.confusions, 3),
+    [unlockedNotes, data.confusions],
+  );
+
   const showAccidentals = useMemo(
     () => unlockedNotes.some(n => n.accidental === 'sharp' || n.accidental === 'flat'),
     [unlockedNotes],
   );
 
+  // Con poche note sbloccate una sessione lunga è solo ripetizione a vuoto.
+  const sessionLength = Math.min(settings.sessionLength, Math.max(4, unlockedNotes.length * 3));
+
   const startSession = useCallback(
     (focusIds?: string[]) => {
-      // Con poche note sbloccate una sessione lunga è solo ripetizione a vuoto.
-      const cap = Math.max(4, unlockedNotes.length * 3);
       const questions = buildSession({
         unlocked: unlockedNotes,
         cards: data.cards,
-        length: Math.min(settings.sessionLength, cap),
+        length: sessionLength,
         focusIds,
       });
       if (questions.length === 0) return;
       logRef.current = [];
       requeuesRef.current = {};
+      setWarnings({});
       setLog([]);
       setQueue(questions);
       setPos(0);
       setXpGained(0);
       setPhase('running');
+      window.scrollTo({ top: 0 });
     },
-    [unlockedNotes, data.cards, settings.sessionLength],
+    [unlockedNotes, data.cards, sessionLength],
   );
+
+  /** Le note sbagliate più quelle con cui le hai confuse: si allenano insieme. */
+  const drillIds = useCallback((pairs: { note: NoteEntry; given: string }[]): string[] => {
+    const ids = new Set<string>();
+    for (const { note, given } of pairs) {
+      ids.add(note.id);
+      const partner = confusionPartner(note, given, unlockedNotes);
+      if (partner) ids.add(partner.id);
+    }
+    return [...ids];
+  }, [unlockedNotes]);
 
   const finish = useCallback(() => {
     const wrongCount = logRef.current.filter(l => !l.correct).length;
     const unlocked = progress.finishSession(wrongCount);
     unlocked.forEach(a => notify(a.emoji, a.title, a.desc));
     if (wrongCount === 0 && logRef.current.length > 0) audio.playSuccess();
-    progress.recordStudyMinutes(Math.max(1, Math.ceil(logRef.current.length / 8)));
     setPhase('summary');
   }, [progress, notify, audio]);
 
   const handleResult = useCallback(
-    (correct: boolean, ms: number, usedHint: boolean) => {
+    (correct: boolean, ms: number, usedHint: boolean, given: string) => {
       const q = queue[pos];
-      if (!q) return;
+      const note = q ? noteById(q.noteId) : undefined;
+      if (!q || !note) return;
 
-      const outcome = progress.answer(q.noteId, q.dir, correct, ms, usedHint);
+      const outcome = progress.answer(q.noteId, q.dir, correct, ms, usedHint, given);
       setXpGained(x => x + outcome.xp);
 
-      const entry: SessionLogEntry = { noteId: q.noteId, correct, ms };
+      const mistake = correct ? null : diagnose(note, given, q.dir);
+      setWarnings(prev => {
+        const next = { ...prev };
+        if (mistake) next[q.noteId] = mistake.text;
+        else delete next[q.noteId];
+        return next;
+      });
+
+      const entry: SessionLogEntry = { noteId: q.noteId, dir: q.dir, correct, ms, given: correct ? undefined : given, mistake };
       logRef.current = [...logRef.current, entry];
       setLog(logRef.current);
 
@@ -138,6 +240,14 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
     progress.setSettings({ readInput: settings.readInput === 'names' ? 'keys' : 'names' });
   }, [progress, settings.readInput]);
 
+  const unlockAndIntroduce = useCallback(() => {
+    const note = progress.unlockNext();
+    if (note) {
+      notify('🔓', `Nota sbloccata: ${note.displayName}`, note.englishName);
+      setPhase('intro');
+    }
+  }, [progress, notify]);
+
   const current = queue[pos];
   const currentNote = current ? noteById(current.noteId) : undefined;
 
@@ -148,13 +258,113 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
     return { from: `C${oct}`, to: `B${oct + (settings.strictOctave ? 1 : 0)}` };
   }, [currentNote, newestNote, settings.strictOctave]);
 
+  // ── Il piano di oggi ──────────────────────────────────────────────────────
+  const learned = useMemo(() => unlockedNotes.map(n => n.toneNote), [unlockedNotes]);
+  const plan = useMemo<PlanStep[]>(() => {
+    const today = progress.todayStat;
+    const steps: PlanStep[] = [];
+
+    const unseen = unlockedNotes.filter(n => (data.cards[cardKey(n.id, 'read')]?.reps ?? 0) === 0).length;
+    const newestCard = newestNote ? data.cards[cardKey(newestNote.id, 'read')] : undefined;
+    steps.push({
+      key: 'lettura',
+      icon: Eye,
+      title: progress.due > 0 ? 'Ripasso di lettura' : 'Lettura',
+      detail:
+        progress.due > 0
+          ? `${progress.due} ${progress.due === 1 ? 'nota torna' : 'note tornano'} oggi, prima di dimenticarle`
+          : unseen > 0
+            ? `${unseen} ${unseen === 1 ? 'nota' : 'note'} da provare per la prima volta`
+            : newestNote && !progress.canUnlockNext && !progress.isComplete
+              ? `${newestNote.displayName}: ${readiness(newestCard)} per sbloccare la prossima`
+              : 'una sessione breve per restare sciolto',
+      done: progress.due === 0 && today.answers >= sessionLength,
+      action: { kind: 'session' },
+    });
+
+    if (progress.canUnlockNext) {
+      const next = curriculum[data.unlockedCount];
+      steps.push({
+        key: 'nuova',
+        icon: Unlock,
+        title: `Nota nuova: ${next?.displayName ?? ''}`,
+        detail: `${newestNote?.displayName} ti viene automatica: è il momento di aggiungerne una`,
+        done: false,
+        action: { kind: 'unlock' },
+      });
+    }
+
+    const nextLesson = modules.flatMap(m => m.lessons).find(l => !data.lessonsDone.includes(l.id));
+    const theoryDone = (today.theory ?? 0) > 0 && progress.theoryDue.length === 0;
+    if (progress.theoryDue.length > 0) {
+      steps.push({
+        key: 'teoria',
+        icon: BookOpen,
+        title: 'Ripasso di teoria',
+        detail: `${progress.theoryDue.length} ${progress.theoryDue.length === 1 ? 'esercizio sbagliato torna' : 'esercizi sbagliati tornano'} oggi`,
+        done: false,
+        action: { kind: 'go', tab: 'technique', intent: { review: true } },
+      });
+    } else if (nextLesson) {
+      steps.push({
+        key: 'teoria',
+        icon: BookOpen,
+        title: `Lezione: ${nextLesson.title}`,
+        detail: `${nextLesson.minutes}′ · ${nextLesson.goal}`,
+        done: theoryDone,
+        action: { kind: 'go', tab: 'technique', intent: { lessonId: nextLesson.id } },
+      });
+    } else {
+      steps.push({
+        key: 'teoria',
+        icon: BookOpen,
+        title: 'Lettura ritmica',
+        detail: `livello ${data.rhythm.level}: leggi una figura e battila a tempo`,
+        done: theoryDone,
+        action: { kind: 'go', tab: 'technique', intent: { rhythm: true } },
+      });
+    }
+
+    const song = melodies.find(
+      m => m.requiredToneNotes.every(t => learned.includes(t)) && (data.melodyBest[m.id] ?? 0) < 100,
+    );
+    steps.push(
+      song
+        ? {
+            key: 'musica',
+            icon: Music,
+            title: `Suona: ${song.title}`,
+            detail: (data.melodyBest[song.id] ?? 0) > 0
+              ? `record ${data.melodyBest[song.id]}%: punta al 100%`
+              : `${song.notes.length} note, tutte fra quelle che sai leggere`,
+            done: (today.songs ?? 0) > 0,
+            action: { kind: 'go', tab: 'melody', intent: { melodyId: song.id } },
+          }
+        : {
+            key: 'musica',
+            icon: Music,
+            title: 'Due mani',
+            detail: 'un pezzo, una sezione alla volta, prima a mani separate',
+            done: (today.songs ?? 0) > 0,
+            action: { kind: 'go', tab: 'melody', intent: { pieces: true } },
+          },
+    );
+    return steps;
+  }, [progress, data, unlockedNotes, newestNote, sessionLength, learned]);
+
+  const runStep = (action: PlanAction) => {
+    if (action.kind === 'session') startSession();
+    else if (action.kind === 'unlock') unlockAndIntroduce();
+    else onNavigate(action.tab, action.intent);
+  };
+
   if (!data.onboardingDone) {
     return (
       <PlacementTest
-        onComplete={score => {
-          progress.completePlacement(score);
-          const label = score <= 1 ? 'Fondamenta' : score <= 3 ? 'Lettura e ritmo' : 'Armonia e repertorio';
-          notify('🎓', `Percorso: ${label}`, `${score}/5 risposte corrette · puoi cambiare ritmo quando vuoi.`);
+        onComplete={(count, answers) => {
+          progress.completePlacement(count, answers);
+          const label = count <= 1 ? 'dalla prima nota' : `${count} note già sbloccate`;
+          notify('🎓', 'Punto di partenza fissato', `Si parte ${count <= 1 ? label : `con ${label}`}.`);
         }}
       />
     );
@@ -201,6 +411,7 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
           playNote={audio.playNote}
           playError={audio.playError}
           suppressMic={mic.suppress}
+          warning={warnings[current.noteId]}
         />
       </Card>
     );
@@ -208,66 +419,58 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
 
   // ── Riepilogo ─────────────────────────────────────────────────────────────
   if (phase === 'summary') {
+    const wrong = log
+      .filter(l => !l.correct && l.given)
+      .map(l => ({ note: noteById(l.noteId), given: l.given as string }))
+      .filter((x): x is { note: NoteEntry; given: string } => !!x.note);
     return (
       <SessionSummary
         log={log}
         xpGained={xpGained}
         canUnlockNext={progress.canUnlockNext}
         nextNote={curriculum[data.unlockedCount] ?? null}
-        weakIds={weakIds}
         onRetry={() => startSession()}
-        onDrill={() => startSession(weakIds)}
-        onUnlock={() => {
-          const note = progress.unlockNext();
-          if (note) {
-            notify('🔓', `Nota sbloccata: ${note.displayName}`, note.englishName);
-            setPhase('intro');
-          }
-        }}
+        onDrill={() => startSession(drillIds(wrong))}
+        onUnlock={unlockAndIntroduce}
       />
     );
   }
 
   // ── Schermata di avvio ────────────────────────────────────────────────────
   const isFirstEver = data.answers === 0;
-  const minutes = data.studyMinutes[new Date().toLocaleDateString('sv-SE')] ?? 0;
-  const readingDone = progress.todayStat.answers >= Math.min(8, settings.dailyGoal);
-  const reviewDone = progress.due === 0 && progress.todayStat.answers > 0;
+  const nextIdx = plan.findIndex(s => !s.done);
+  const allDone = nextIdx < 0;
 
   return (
     <div className="flex flex-col gap-3">
       <Card className="relative overflow-hidden border-brand/30 bg-gradient-to-br from-brand/20 via-surface to-surface">
         <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-brand2/20 blur-2xl" />
         <div className="relative">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Il tuo studio di oggi</p>
-          <div className="mt-2 flex items-end justify-between gap-3">
+          <div className="flex items-end justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-black text-ink">Poco, bene, ogni giorno.</h1>
-              <p className="mt-1 text-sm text-ink2">Completa un passo alla volta: il prossimo è già scelto.</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Il tuo studio di oggi</p>
+              <h1 className="mt-1 text-2xl font-black text-ink">
+                {allDone ? 'Fatto, per oggi.' : 'Poco, bene, ogni giorno.'}
+              </h1>
+              <p className="mt-1 text-sm text-ink2">
+                {allDone
+                  ? 'Tutto il piano è completo. Se hai ancora voglia, una canzone o uno sprint.'
+                  : 'Un passo alla volta: il prossimo è già scelto.'}
+              </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-2xl font-black tabular-nums text-ink">{minutes}</p>
+              <p className="text-2xl font-black tabular-nums text-ink">{progress.todayMinutes}</p>
               <p className="text-[10px] uppercase tracking-wide text-ink3">minuti</p>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-            <div className={`rounded-xl border p-3 ${reviewDone ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-line bg-surface/70'}`}>
-              <p className="font-black text-ink">{reviewDone ? '✓ ' : '1 · '}Ripasso</p>
-              <p className="mt-0.5 text-ink3">{progress.due || 3} carte mirate</p>
-            </div>
-            <div className={`rounded-xl border p-3 ${readingDone ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-brand/30 bg-brand/10'}`}>
-              <p className="font-black text-ink">{readingDone ? '✓ ' : '2 · '}Lettura</p>
-              <p className="mt-0.5 text-ink3">8 risposte pulite</p>
-            </div>
-            <button type="button" onClick={() => onNavigate('technique')} className="rounded-xl border border-line bg-surface/70 p-3 text-left transition-colors hover:border-brand/50">
-              <p className="font-black text-ink">3 · Teoria</p><p className="mt-0.5 text-ink3">{progress.theoryDue.length > 0 ? `${progress.theoryDue.length} errori da riprendere` : 'una lezione breve'}</p>
-            </button>
-            <button type="button" onClick={() => onNavigate('melody')} className="rounded-xl border border-line bg-surface/70 p-3 text-left transition-colors hover:border-brand/50">
-              <p className="font-black text-ink">4 · Repertorio</p><p className="mt-0.5 text-ink3">una sezione lenta</p>
-            </button>
+          <div className="mt-4 flex flex-col gap-2">
+            {plan.map((step, i) => (
+              <PlanRow key={step.key} step={step} n={i + 1} isNext={i === nextIdx} onRun={runStep} />
+            ))}
           </div>
         </div>
       </Card>
+
       <Card className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -285,7 +488,7 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
         <div className="flex flex-wrap gap-2 text-xs text-ink3">
           <Pill>
             <Timer className="h-3 w-3" />
-            {Math.min(settings.sessionLength, Math.max(4, unlockedNotes.length * 3))} domande
+            {sessionLength} domande
           </Pill>
           <Pill>
             {settings.readInput === 'names' ? 'rispondi coi nomi' : 'rispondi sulla tastiera'}
@@ -306,29 +509,30 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
         )}
       </Card>
 
-      <Card className="focus-hide">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-black uppercase tracking-wide text-ink3">Piano reale</p>
-            <p className="mt-1 text-sm font-bold text-ink">Calibrazione microfono</p>
+      {confusions.length > 0 && (
+        <Card>
+          <p className="text-xs font-bold uppercase tracking-wide text-ink3">Le note che confondi</p>
+          <div className="mt-2 space-y-1.5">
+            {confusions.map(c => (
+              <p key={`${c.note.id}>${c.given}`} className="text-sm text-ink2">
+                <span className="font-bold text-ink">
+                  {c.note.displayName}
+                  {c.note.clef === 'bass' ? ' (basso)' : ''}
+                </span>{' '}
+                letta come <span className="font-bold text-ink">{italianOf(c.given)}</span>{' '}
+                <span className="text-xs text-ink3">· {KIND_LABEL[c.mistake.kind]} · {c.count}×</span>
+              </p>
+            ))}
           </div>
-          <Pill tone={mic.isListening ? (mic.level > 0.08 ? 'good' : 'warn') : 'neutral'}>
-            {mic.isListening ? (mic.level > 0.08 ? 'segnale pronto' : 'suona una nota') : 'tocca 🎤 in alto'}
-          </Pill>
-        </div>
-        {mic.isListening ? (
-          <div className="mt-3 space-y-2">
-            <Bar pct={Math.min(1, mic.level * 3.2)} color={mic.level > 0.08 ? 'bg-emerald-500' : 'bg-amber-500'} />
-            <div className="flex items-center justify-between text-xs text-ink2">
-              <span>{mic.liveNote ? `Rilevata: ${mic.liveNote.name}${mic.liveNote.octave}` : 'In ascolto…'}</span>
-              <span className="tabular-nums">livello {Math.round(mic.level * 100)}%</span>
-            </div>
-            <p className="text-[11px] leading-relaxed text-ink3">Prova tre note a volume normale. Se la barra resta bassa, avvicina il telefono; se resta piena anche nel silenzio, allontanalo.</p>
-          </div>
-        ) : (
-          <p className="mt-2 text-xs leading-relaxed text-ink3">Accendi il microfono e suona tre note prima della sessione. L’app ti dirà se il segnale è abbastanza chiaro.</p>
-        )}
-      </Card>
+          <p className="mt-2 text-xs leading-relaxed text-ink3">
+            Allenarle una accanto all'altra, mescolate, è il modo più veloce per smettere di scambiarle.
+          </p>
+          <Btn variant="soft" full className="mt-3" onClick={() => startSession(drillIds(confusions))}>
+            <Target className="h-4 w-4" />
+            Allenale insieme
+          </Btn>
+        </Card>
+      )}
 
       {isFirstEver && (
         <Panel className="space-y-2 px-4 py-3 text-sm leading-relaxed text-ink2">
@@ -338,21 +542,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
           </p>
           <p>1. Una nota alla volta: si sblocca la successiva solo quando la precedente ti viene automatica.</p>
           <p>2. Le note tornano quando stai per dimenticarle — non a caso: è ripetizione spaziata.</p>
-          <p>3. Se hai un piano vero, accendi il 🎤 e rispondi suonando: è il modo più efficace.</p>
+          <p>3. Se hai un piano vero, tocca 🎤 in alto e rispondi suonando: è il modo più efficace.</p>
         </Panel>
-      )}
-
-      {weak.length > 0 && (
-        <Card>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink3">Da tenere d'occhio</p>
-          <div className="flex flex-wrap gap-2">
-            {weak.map(w => (
-              <Pill key={w.note.id} tone="warn">
-                {w.note.displayName} ({w.note.englishName})
-              </Pill>
-            ))}
-          </div>
-        </Card>
       )}
     </div>
   );

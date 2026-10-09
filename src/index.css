@@ -80,7 +80,6 @@ body {
   --c-ink3: color-mix(in srgb, var(--c-ink) 65%, var(--c-canvas));
 }
 
-:root[data-focus-mode="true"] .focus-hide { display: none !important; }
 
 :root[data-reduced-motion="true"] *,
 :root[data-reduced-motion="true"] *::before,

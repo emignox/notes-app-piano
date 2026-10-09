@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useProgress } from './hooks/useProgress';
 import { useAudio } from './hooks/useAudio';
 import { usePitchDetection } from './hooks/usePitchDetection';
-import type { Tab } from './components/Shell';
+import type { Intent, Tab } from './components/Shell';
 import { BottomNav, TopBar } from './components/Shell';
 import type { SongSection } from './components/MelodyView';
 import type { ToastData } from './components/ui';
@@ -49,6 +49,20 @@ export default function App() {
 
   const [tab, setTab] = useState<Tab>('practice');
   const [songSection, setSongSection] = useState<SongSection>('melodie');
+  /** Dove portare l'utente dentro la scheda (dal piano di oggi). Vale una volta. */
+  const [intent, setIntent] = useState<Intent | null>(null);
+  // Cambia a ogni navigazione: la scheda riparte dal suo inizio, anche quando
+  // si tocca quella già aperta (dal riepilogo di una sessione si torna a "Oggi").
+  const [navKey, setNavKey] = useState(0);
+
+  const navigate = useCallback((next: Tab, target?: Intent) => {
+    setIntent(target ?? null);
+    setNavKey(k => k + 1);
+    if (target?.pieces) setSongSection('pezzi');
+    else if (target?.melodyId) setSongSection('melodie');
+    setTab(next);
+    window.scrollTo({ top: 0 });
+  }, []);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const toastId = useRef(0);
 
@@ -74,6 +88,22 @@ export default function App() {
       window.removeEventListener('keydown', kick);
     };
   }, []);
+
+  // Minuti di studio veri: ogni tocco e ogni nota suonata dicono "sto studiando".
+  const touchRef = useRef(progress.touchActivity);
+  useEffect(() => { touchRef.current = progress.touchActivity; });
+  useEffect(() => {
+    const touch = () => touchRef.current();
+    window.addEventListener('pointerdown', touch, { passive: true });
+    window.addEventListener('keydown', touch);
+    return () => {
+      window.removeEventListener('pointerdown', touch);
+      window.removeEventListener('keydown', touch);
+    };
+  }, []);
+  useEffect(() => {
+    if (pitch.confirmedNote) touchRef.current();
+  }, [pitch.confirmedNote]);
 
   // Prova del suono: l'unico modo onesto di capire se il telefono è muto per
   // colpa del browser o per l'interruttore silenzioso è farlo suonare.
@@ -133,9 +163,9 @@ export default function App() {
           </div>
         )}
 
-        <Suspense fallback={<ViewFallback />}>
+        <Suspense key={navKey} fallback={<ViewFallback />}>
           {tab === 'practice' && (
-            <PracticeView progress={progress} audio={audio} mic={mic} notify={notify} onNavigate={setTab} />
+            <PracticeView progress={progress} audio={audio} mic={mic} notify={notify} onNavigate={navigate} />
           )}
           {tab === 'melody' &&
             (songSection === 'melodie' ? (
@@ -146,6 +176,7 @@ export default function App() {
                 notify={notify}
                 section={songSection}
                 onSection={setSongSection}
+                initialMelodyId={intent?.melodyId}
               />
             ) : (
               <PieceView
@@ -158,7 +189,7 @@ export default function App() {
               />
             ))}
           {tab === 'technique' && (
-            <StudyView progress={progress} audio={audio} mic={mic} notify={notify} />
+            <StudyView progress={progress} audio={audio} mic={mic} notify={notify} intent={intent} />
           )}
           {tab === 'sprint' && (
             <SprintView
@@ -169,11 +200,13 @@ export default function App() {
             />
           )}
           {tab === 'stats' && <StatsView progress={progress} />}
-          {tab === 'settings' && <SettingsView progress={progress} onTestSound={testAudio} />}
+          {tab === 'settings' && (
+            <SettingsView progress={progress} onTestSound={testAudio} mic={mic} onToggleMic={toggleMic} />
+          )}
         </Suspense>
       </main>
 
-      <BottomNav tab={tab} onChange={t => { setTab(t); window.scrollTo({ top: 0 }); }} />
+      <BottomNav tab={tab} onChange={t => navigate(t)} />
       <Toasts items={toasts} onDone={dismissToast} />
     </div>
     </GlossarioProvider>

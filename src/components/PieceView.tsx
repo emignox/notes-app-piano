@@ -217,7 +217,6 @@ function PieceChallenge({
         const next = progress.recordPieceLoop(loopKey, pct === 100, bpm);
         setSuggestedBpm(next);
       }
-      progress.recordStudyMinutes(Math.max(1, Math.ceil(slice.length / 24)));
       unlocked.forEach(a => notify(a.emoji, a.title, a.desc));
       if (pct === 100) audio.playSuccess();
       setDone(true);

@@ -49,6 +49,8 @@ interface MelodyViewProps {
   notify: Notify;
   section: SongSection;
   onSection: (s: SongSection) => void;
+  /** Dal piano di oggi: la canzone da aprire subito. */
+  initialMelodyId?: string;
 }
 
 function toEntry(mn: MelodyNote, i: number): NoteEntry {
@@ -476,8 +478,10 @@ function MelodyChallenge({
 
 // ── Contenitore ─────────────────────────────────────────────────────────────
 
-export function MelodyView({ progress, audio, mic, notify, section, onSection }: MelodyViewProps) {
-  const [selected, setSelected] = useState<Melody | null>(null);
+export function MelodyView({ progress, audio, mic, notify, section, onSection, initialMelodyId }: MelodyViewProps) {
+  const [selected, setSelected] = useState<Melody | null>(
+    () => melodies.find(m => m.id === initialMelodyId) ?? null,
+  );
   const learned = useMemo(() => progress.unlockedNotes.map(n => n.toneNote), [progress.unlockedNotes]);
 
   if (selected) {

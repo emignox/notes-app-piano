@@ -39,6 +39,8 @@ export interface ConfirmedNote {
   id: number;
   /** Quando è stata confermata: distingue una nota appena suonata da una vecchia. */
   at: number;
+  /** Quando è stato premuto il tasto (Date.now): per il ritmo conta questo. */
+  onsetAt: number;
 }
 
 export function usePitchDetection() {
@@ -124,7 +126,8 @@ export function usePitchDetection() {
 
         const [pitch, clarity] = detector.findPitch(input, audioCtx.sampleRate);
         const now = Date.now();
-        const out = tracker.feed(rms, pitch, clarity, now);
+        // I campioni grezzi servono a datare l'attacco dentro la finestra.
+        const out = tracker.feed(rms, pitch, clarity, now, input, audioCtx.sampleRate);
 
         if (out.confirmed !== null) {
           const id = ++confirmIdRef.current;
@@ -132,6 +135,7 @@ export function usePitchDetection() {
             note: { ...midiToNote(out.confirmed), clarity: out.clarity },
             id,
             at: now,
+            onsetAt: out.onset ?? now,
           });
         }
 
