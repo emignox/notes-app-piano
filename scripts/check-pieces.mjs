@@ -4,6 +4,7 @@
 // Vite però c'è già, e sa caricare un modulo TS lato server: lo usiamo come
 // interprete. Nessuna dipendenza in più solo per fare un controllo.
 
+import fs from 'node:fs';
 import { createServer } from 'vite';
 
 const server = await createServer({
@@ -21,7 +22,8 @@ const server = await createServer({
 try {
   const { pieces } = await server.ssrLoadModule('/src/data/pieces.ts');
   const { checkAll, formatIssues } = await server.ssrLoadModule('/src/lib/scoreCheck.ts');
-  const { advancedChopin } = await server.ssrLoadModule('/src/data/repertoire/chopinAdvanced.ts');
+  const { pieceToMusicXml } = await server.ssrLoadModule('/src/lib/pieceToMusicXml.ts');
+  const { library } = await server.ssrLoadModule('/src/data/library.ts');
 
   const issues = checkAll(pieces);
   const errors = issues.filter(i => i.level === 'errore');
@@ -32,23 +34,35 @@ try {
   console.log(formatIssues(issues));
   console.log(`\n${errors.length} errori, ${warnings.length} avvisi.`);
 
-  let advancedErrors = 0;
-  const advancedNotes = advancedChopin.reduce((sum, piece) => {
-    let previous = -1;
-    for (const [midi, at, hold, velocity, right] of piece.events) {
-      if (midi < 21 || midi > 108 || at < 0 || hold <= 0 || velocity < 0 || velocity > 1 || (right !== 0 && right !== 1) || at < previous) advancedErrors++;
-      previous = at;
+  // Il Leggio legge i pezzi come MusicXML: in ogni battuta le due mani
+  // devono durare uguale (altrimenti il rigo si sfasa).
+  let xmlErrors = 0;
+  const sum = part => [...part.matchAll(/<note>(?!<chord\/>)[\s\S]*?<duration>(\d+)<\/duration>/g)].reduce((t, x) => t + Number(x[1]), 0);
+  for (const piece of pieces) {
+    const xml = pieceToMusicXml(piece);
+    [...xml.matchAll(/<measure [^>]*>([\s\S]*?)<\/measure>/g)].forEach((m, i) => {
+      const [right, rest = ''] = m[1].split('<backup>');
+      const back = Number(rest.match(/<duration>(\d+)/)?.[1] ?? 0);
+      const left = rest.replace(/^<duration>\d+<\/duration><\/backup>/, '');
+      if (sum(right) !== back || sum(left) !== back) {
+        xmlErrors++;
+        console.log(`  ${piece.id}, battuta ${i + 1}: destra ${sum(right)}, sinistra ${sum(left)}, attesa ${back}`);
+      }
+    });
+  }
+  // Le partiture complete della libreria devono esserci davvero.
+  for (const entry of library) {
+    if (entry.source.kind !== 'xml') continue;
+    const file = new URL(`../public${entry.source.url}`, import.meta.url);
+    if (!fs.existsSync(file) || !fs.readFileSync(file, 'utf8').includes('<score-partwise')) {
+      xmlErrors++;
+      console.log(`  ${entry.id}: manca la partitura ${entry.source.url}`);
     }
-    let previousPedal = -1;
-    for (const [at, down] of piece.pedals) {
-      if (at < 0 || at < previousPedal || (down !== 0 && down !== 1)) advancedErrors++;
-      previousPedal = at;
-    }
-    return sum + piece.events.length;
-  }, 0);
-  console.log(`${advancedChopin.length} partiture MIDI integrali, ${advancedNotes} note: ${advancedErrors} errori.`);
+  }
+  const complete = library.filter(e => e.source.kind === 'xml').length;
+  console.log(`Leggio: ${library.length} brani (${complete} partiture complete): ${xmlErrors} errori.`);
 
-  process.exitCode = errors.length > 0 || advancedErrors > 0 ? 1 : 0;
+  process.exitCode = errors.length > 0 || xmlErrors > 0 ? 1 : 0;
 } finally {
   await server.close();
 }

@@ -343,8 +343,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
         : {
             key: 'musica',
             icon: Music,
-            title: 'Due mani',
-            detail: 'un pezzo, una sezione alla volta, prima a mani separate',
+            title: 'Un brano',
+            detail: 'nel Leggio: un gruppo di battute, prima a mani separate',
             done: (today.songs ?? 0) > 0,
             action: { kind: 'go', tab: 'melody', intent: { pieces: true } },
           },

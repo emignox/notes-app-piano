@@ -343,7 +343,7 @@ export const chopinModule: Module = {
       blocks: [
         {
           kind: 'text',
-          text: 'Gli Studi di Chopin sono pezzi da concerto costruiti su UN problema tecnico ciascuno. Nell\'app ci sono gli originali integrali (Canzoni → Due mani, in alto): si ascoltano a qualsiasi velocità, una mano alla volta, seguendo sulla partitura le note che si accendono.',
+          text: 'Gli Studi di Chopin sono pezzi da concerto costruiti su UN problema tecnico ciascuno. Nell\'app ci sono gli originali integrali (Canzoni → Brani, nel Leggio): si ascoltano a qualsiasi velocità, una mano alla volta, seguendo le note che si accendono sul rigo e sulla tastiera.',
         },
         {
           kind: 'table',

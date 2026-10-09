@@ -507,7 +507,7 @@ export function MelodyView({ progress, audio, mic, notify, section, onSection, i
         onChange={onSection}
         options={[
           { value: 'melodie', label: 'Melodie' },
-          { value: 'pezzi', label: 'Due mani' },
+          { value: 'pezzi', label: 'Brani' },
         ]}
       />
       <Card>

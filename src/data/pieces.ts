@@ -15,11 +15,12 @@ import type { Piece } from '../types';
 import { basi } from './repertoire/basi';
 import { mozart } from './repertoire/mozart';
 import { chopin } from './repertoire/chopin';
+import { classici } from './repertoire/classici';
 
 const RANK = { facile: 0, medio: 1, difficile: 2 } as const;
 
 /** Dal più facile al più difficile, senza doversi ricordare di riordinare. */
-export const pieces: Piece[] = [...basi, ...mozart, ...chopin].sort(
+export const pieces: Piece[] = [...basi, ...classici, ...mozart, ...chopin].sort(
   (a, b) => RANK[a.difficulty] - RANK[b.difficulty] || a.level - b.level,
 );
 

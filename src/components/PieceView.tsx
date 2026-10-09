@@ -37,13 +37,15 @@ import { haptics } from '../lib/haptics';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { LiveNote } from '../hooks/usePitchDetection';
-import { Bar, Btn, Card, Confetti, Panel, Pill, Segmented } from './ui';
+import { Bar, Btn, Card, Confetti, Panel, Segmented } from './ui';
 import type { Notify } from './ui';
 import { GrandStaff } from './GrandStaff';
 import { PianoKeyboard } from './PianoKeyboard';
 
 import type { SongSection } from './MelodyView';
-import { AdvancedChopinView } from './AdvancedChopinView';
+import { Library } from './Library';
+import { Leggio } from './leggio/Leggio';
+import type { LibraryEntry } from '../data/library';
 
 interface PieceViewProps {
   section: SongSection;
@@ -58,6 +60,8 @@ interface PieceViewProps {
   notify: Notify;
   /** Dalle lezioni: il pezzo da aprire subito. */
   initialPieceId?: string;
+  /** Il Leggio copre l'intestazione: il microfono si accende anche da lì. */
+  onToggleMic?: () => void;
 }
 
 const HANDS: { id: Hand; label: string }[] = [
@@ -651,8 +655,9 @@ function PieceChallenge({
   );
 }
 
-export function PieceView({ progress, audio, mic, notify, section, onSection, initialPieceId }: PieceViewProps) {
+export function PieceView({ progress, audio, mic, notify, section, onSection, initialPieceId, onToggleMic }: PieceViewProps) {
   const [selected, setSelected] = useState<Piece | null>(() => pieces.find(p => p.id === initialPieceId) ?? null);
+  const [open, setOpen] = useState<LibraryEntry | null>(null);
 
   if (selected) {
     return (
@@ -668,13 +673,6 @@ export function PieceView({ progress, audio, mic, notify, section, onSection, in
     );
   }
 
-  const bestOf = (p: Piece) =>
-    Math.max(
-      progress.data.melodyBest[`piece:${p.id}:right`] ?? 0,
-      progress.data.melodyBest[`piece:${p.id}:left`] ?? 0,
-      progress.data.melodyBest[`piece:${p.id}:both`] ?? 0,
-    );
-
   return (
     <div className="flex flex-col gap-2.5">
       <Segmented
@@ -682,56 +680,24 @@ export function PieceView({ progress, audio, mic, notify, section, onSection, in
         onChange={onSection}
         options={[
           { value: 'melodie', label: 'Melodie' },
-          { value: 'pezzi', label: 'Due mani' },
+          { value: 'pezzi', label: 'Brani' },
         ]}
       />
 
-      <AdvancedChopinView audio={audio} />
-      <Panel className="px-4 py-3 text-xs leading-relaxed text-ink2">
-        Doppio pentagramma: sopra la mano destra, sotto la sinistra. Sono pagine intere, quindi si
-        studiano <b>una sezione per volta</b> e <b>una mano per volta</b> — con il tempo abbassato
-        quanto serve. Legature, staccati e dinamiche sono parte del pezzo: seguile.
-      </Panel>
+      <Library progress={progress} onOpen={setOpen} onGuided={setSelected} />
 
-      {pieces.map(p => {
-        const best = bestOf(p);
-        const bars = splitMeasures(p).length;
-        const tonality = keyInfo(p.key.tonic, p.key.mode);
-        return (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setSelected(p)}
-            className="rounded-2xl border border-line bg-surface p-3 text-left transition-all active:scale-[0.99]"
-          >
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 text-3xl">{p.emoji}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-ink">{p.title}</span>
-                  <Pill tone={p.difficulty === 'facile' ? 'good' : p.difficulty === 'medio' ? 'warn' : 'bad'}>
-                    {p.difficulty}
-                  </Pill>
-                  {best > 0 && <Pill tone="brand">record {best}%</Pill>}
-                </div>
-                <p className="mt-0.5 text-xs text-ink3">
-                  {p.composer} · {bars} battute · {tonality.label} · {p.meter} · {p.bpm} bpm
-                </p>
-                <p className="mt-1 text-xs leading-snug text-ink2">{p.hint}</p>
-                {p.focus && p.focus.length > 0 && (
-                  <p className="mt-1 text-[11px] leading-snug text-ink3">
-                    si lavora su: {p.focus.join(' · ')}
-                  </p>
-                )}
-                <p className="mt-1.5 text-[11px] text-ink3">
-                  sinistra: {pieceNotes(p, 'left').slice(0, 5).map(n => italianOf(n)).join(' ')}
-                  {pieceNotes(p, 'left').length > 5 ? '…' : ''}
-                </p>
-              </div>
-            </div>
-          </button>
-        );
-      })}
+      {open && (
+        <Leggio
+          key={open.id}
+          entry={open}
+          audio={audio}
+          mic={mic}
+          progress={progress}
+          onToggleMic={onToggleMic}
+          onClose={() => setOpen(null)}
+          onGuided={open.source.kind === 'piece' ? () => { const p = open.source.kind === 'piece' ? open.source.piece : null; setOpen(null); setSelected(p); } : undefined}
+        />
+      )}
     </div>
   );
 }

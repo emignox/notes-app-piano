@@ -190,6 +190,7 @@ export default function App() {
                 section={songSection}
                 onSection={setSongSection}
                 initialPieceId={intent?.pieceId}
+                onToggleMic={toggleMic}
               />
             ))}
           {tab === 'technique' && (
