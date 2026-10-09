@@ -5,6 +5,7 @@
 
 import type { Card } from './srs';
 import type { NameStyle } from './notes';
+import type { EarProgress } from './earTraining';
 
 const KEY = 'piano-trainer-v2';
 const LEGACY_KEY = 'piano-notes-progress';
@@ -126,6 +127,8 @@ export interface Persisted {
   /** Esercizi di teoria sbagliati e quando tornano. Chiave: `lezione#indice`. */
   theoryBoxes: Record<string, TheoryBox>;
   rhythm: RhythmProgress;
+  /** Allenamento dell'orecchio: livello e risposte recenti per esercizio. */
+  ear: Record<string, EarProgress>;
   /** Miglior risultato dei loop: chiave pezzo/sezione/mano → serie perfetta e BPM. */
   pieceLoops: Record<string, { perfectRuns: number; bpm: number }>;
   settings: Settings;
@@ -172,6 +175,7 @@ export function emptyState(): Persisted {
     confusions: {},
     theoryBoxes: {},
     rhythm: { level: 1, clean: 0 },
+    ear: {},
     pieceLoops: {},
     settings: { ...defaultSettings },
   };
@@ -214,6 +218,7 @@ export function load(): Persisted {
         confusions: parsed.confusions ?? {},
         theoryBoxes: parsed.theoryBoxes ?? {},
         rhythm: parsed.rhythm ?? { level: 1, clean: 0 },
+        ear: parsed.ear ?? {},
         pieceLoops: parsed.pieceLoops ?? {},
         settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
       };

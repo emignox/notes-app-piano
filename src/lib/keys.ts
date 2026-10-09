@@ -229,6 +229,43 @@ export const PROGRESSIONS: Progression[] = [
       'Dal vi in poi ogni accordo scende di una quinta verso il successivo (vi → ii → V → I): è il "giro delle quinte" in miniatura, e per questo torna sempre al punto di partenza. Si può ripetere all\'infinito senza che l\'orecchio si stanchi.',
     where: '"Rhythm changes", standard jazz, doo-wop anni Cinquanta.',
   },
+  // ── Cadenze: come finisce una frase ──
+  {
+    id: 'cad-perfetta',
+    name: 'Cadenza perfetta',
+    degrees: [4, 5, 1],
+    mode: 'maggiore',
+    roman: 'IV – V – I',
+    why: 'Il V scende sul I: è il punto fermo della musica. Quasi ogni pezzo classico finisce così, e lo si sente chiudere anche senza conoscerlo.',
+    where: 'Alla fine di quasi tutte le frasi e di quasi tutti i pezzi, da Bach a Chopin.',
+  },
+  {
+    id: 'cad-plagale',
+    name: 'Cadenza plagale',
+    degrees: [1, 4, 1],
+    mode: 'maggiore',
+    roman: 'I – IV – I',
+    why: 'Dal IV al I, senza passare dal V: una chiusura morbida, senza tensione. È l\'"Amen" degli inni.',
+    where: 'In coda agli inni e spesso dopo una cadenza perfetta, come un saluto.',
+  },
+  {
+    id: 'cad-sospesa',
+    name: 'Cadenza sospesa',
+    degrees: [1, 4, 5],
+    mode: 'maggiore',
+    roman: 'I – IV – V',
+    why: 'La frase si ferma sul V: è una virgola, non un punto. Chi ascolta aspetta la risposta, che di solito è la frase successiva.',
+    where: 'A metà dei periodi: "domanda" che la frase dopo risolve.',
+  },
+  {
+    id: 'cad-inganno',
+    name: 'Cadenza d\'inganno',
+    degrees: [1, 4, 5, 6],
+    mode: 'maggiore',
+    roman: 'I – IV – V – vi',
+    why: 'Il V prepara il I e invece arriva il vi, la relativa minore: la frase che doveva finire si riapre. È un piccolo colpo di scena.',
+    where: 'Per allungare un finale: Chopin la usa per rimandare la chiusura e farla desiderare.',
+  },
 ];
 
 /** Gli accordi veri di una progressione in una tonalità data. */

@@ -16,6 +16,8 @@ import type { Card } from '../lib/srs';
 import { DAY_MS, cardKey, newCard, readyForNext, review } from '../lib/srs';
 import { dueCount as computeDue } from '../lib/session';
 import { confusionName } from '../lib/diagnosis';
+import type { EarDrillId } from '../lib/earTraining';
+import { EAR_START, nextEarProgress } from '../lib/earTraining';
 import { levelInfo } from '../lib/xp';
 import { xpForAnswer } from '../lib/xp';
 
@@ -317,6 +319,23 @@ export function useProgress() {
     [apply],
   );
 
+  /** Una risposta d'orecchio: il livello sale o scende da solo (vedi nextEarProgress). */
+  const recordEar = useCallback(
+    (drill: EarDrillId, correct: boolean, maxLevel: number): { level: number; changed: number } => {
+      let level = 1;
+      let changed = 0;
+      apply(prev => {
+        const before = prev.ear[drill] ?? EAR_START;
+        const after = nextEarProgress(before, correct, maxLevel);
+        level = after.level;
+        changed = after.level - before.level;
+        return { ...prev, ear: { ...prev.ear, [drill]: after }, days: bumpDay(prev, 'theory') };
+      });
+      return { level, changed };
+    },
+    [apply],
+  );
+
   /** Scegliere a mano il livello del ritmo (tornare indietro è legittimo). */
   const setRhythmLevel = useCallback(
     (level: number) => {
@@ -466,6 +485,7 @@ export function useProgress() {
     completeLesson,
     recordTheory,
     recordRhythm,
+    recordEar,
     setRhythmLevel,
     completePlacement,
     touchActivity,

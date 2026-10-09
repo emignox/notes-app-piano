@@ -7,9 +7,10 @@ App personale (PWA, solo front-end) per imparare a leggere e suonare il pianofor
 - **Lettura delle note** con ripetizione spaziata (SM-2 adattato: il voto lo dà il tempo di risposta), interleaving e note di riferimento. Una nota nuova arriva solo quando la precedente è automatica.
 - **Diagnosi degli errori**: non solo "sbagliato", ma perché (chiave scambiata, linea/spazio, una linea di troppo, alterazione, ottava). Quando la nota sbagliata torna, l'avviso ricorda l'errore; le coppie che confondi si allenano insieme.
 - **Piano di oggi** calcolato dallo stato: ripasso scaduto, nota nuova se sei pronto, teoria (errori da riprendere o prossima lezione), una canzone che sai già leggere.
-- **Teoria** a lezioni (spiego, mostro, faccio sentire, ti faccio provare); gli esercizi sbagliati tornano a scatole di Leitner finché non riescono al primo colpo.
+- **Studio verso il repertorio**: 42 lezioni in 7 moduli — leggere lo spartito, fondamenta (intervalli e scale), ritmo, espressione e segni (dinamiche, pedale, rubato, abbellimenti), tecnica e accompagnamento, accordi, e **Verso Chopin**: una lezione per pezzo (mazurka, corale, valzer, notturno, marcia, studi) che finisce aprendo il brano. Gli esercizi sbagliati tornano a scatole di Leitner finché non riescono al primo colpo.
+- **Orecchio**: intervalli, maggiore/minore, settime, scale, dettato melodico e ritmico; il livello si regola da solo e dopo un errore si confrontano la propria risposta e quella giusta.
 - **Ritmo**: lettura ritmica a livelli (figure, pause, crome, punto, controtempo, semicrome), battuta a tempo sullo schermo o con un tasto del piano, misurata in millisecondi sull'orologio audio.
-- **Canzoni e pezzi a due mani**, per sezioni e mani separate.
+- **Canzoni** (anche in chiave di basso e con alterazioni) e **pezzi a due mani**, per sezioni e mani separate; durante l'ascolto si accendono le note che suonano, sul loro rigo.
 - **Microfono**: rispondi suonando sul piano vero, ovunque. Monofonico (gli accordi si arpeggiano).
 
 ## Comandi

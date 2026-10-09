@@ -49,6 +49,7 @@ import { glossario } from '../data/glossario';
 import { useGlossario } from '../hooks/useGlossario';
 import { TechniqueView } from './TechniqueView';
 import { RhythmTrainer } from './RhythmTrainer';
+import { EarTrainer } from './EarTrainer';
 
 interface MicApi {
   isListening: boolean;
@@ -68,7 +69,7 @@ interface StudyViewProps {
   onNavigate: Navigate;
 }
 
-type Section = 'lezioni' | 'tecnica' | 'ritmo' | 'glossario';
+type Section = 'lezioni' | 'tecnica' | 'ritmo' | 'orecchio' | 'glossario';
 
 const XP_PER_LESSON = 40;
 
@@ -1031,7 +1032,7 @@ function ModuleCard({
 }
 
 export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: StudyViewProps) {
-  const [section, setSection] = useState<Section>(intent?.rhythm ? 'ritmo' : 'lezioni');
+  const [section, setSection] = useState<Section>(intent?.rhythm ? 'ritmo' : intent?.ear ? 'orecchio' : 'lezioni');
   const [lesson, setLesson] = useState<Lesson | null>(
     () => (intent?.lessonId ? allLessons.find(l => l.id === intent.lessonId) ?? null : null),
   );
@@ -1076,7 +1077,8 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
           { value: 'lezioni' as const, label: 'Lezioni' },
           { value: 'tecnica' as const, label: 'Tecnica' },
           { value: 'ritmo' as const, label: 'Ritmo' },
-          { value: 'glossario' as const, label: 'Glossario' },
+          { value: 'orecchio' as const, label: 'Orecchio' },
+          { value: 'glossario' as const, label: 'Termini' },
         ]}
       />
 
@@ -1117,6 +1119,8 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
       )}
 
       {section === 'ritmo' && <RhythmTrainer audio={audio} progress={progress} mic={mic} notify={notify} />}
+
+      {section === 'orecchio' && <EarTrainer audio={audio} progress={progress} mic={mic} notify={notify} />}
 
       {section === 'glossario' && <Glossary audio={audio} mic={mic} />}
     </div>

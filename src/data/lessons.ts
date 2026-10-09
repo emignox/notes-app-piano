@@ -12,6 +12,10 @@
 
 import type { ChordQuality, ModeName, OtherScale, ScaleType } from '../lib/harmony';
 import type { ValueId } from '../lib/rhythm';
+import { letturaModule } from './course/lettura';
+import { espressioneModule } from './course/espressione';
+import { tecnicaModule } from './course/tecnica';
+import { chopinModule } from './course/chopin';
 
 // ── Blocchi ─────────────────────────────────────────────────────────────────
 
@@ -964,14 +968,140 @@ const rhythmModule: Module = {
         { kind: 'value-name', id: 'semiminima' },
       ],
     },
+    {
+      id: 'ri-5-composti',
+      title: 'Tempi composti e due contro tre',
+      goal: 'Contare 9/8 e 12/8 a gruppi di tre, e suonare due note contro tre.',
+      prereq: 'Tempo, battute e metro; le terzine.',
+      minutes: 9,
+      blocks: [
+        {
+          kind: 'text',
+          text: 'I tempi si dividono in due famiglie. Nei tempi SEMPLICI (2/4, 3/4, 4/4) ogni movimento si divide in due crome; nei tempi COMPOSTI (6/8, 9/8, 12/8) ogni movimento si divide in tre. Il numero di movimenti può essere lo stesso: cambia come si divide ciascuno.',
+        },
+        {
+          kind: 'table',
+          head: ['Semplice', 'Composto con gli stessi movimenti'],
+          rows: [
+            ['2/4 — due movimenti da due crome', '6/8 — due movimenti da tre crome'],
+            ['3/4 — tre movimenti da due crome', '9/8 — tre movimenti da tre crome'],
+            ['4/4 — quattro movimenti da due crome', '12/8 — quattro movimenti da tre crome'],
+          ],
+        },
+        {
+          kind: 'key',
+          text: 'Il 12/8 si conta in QUATTRO: "UNO-e-a, DUE-e-a, TRE-e-a, QUATTRO-e-a". Contarlo in dodici lo rende rigido e lento: il Notturno op. 9 n. 2 è scritto così e deve dondolare.',
+        },
+        {
+          kind: 'listen',
+          notes: ['Eb3', 'G3', 'Bb3', 'Eb3', 'G3', 'Bb3', 'Eb3', 'G3', 'Bb3', 'Eb3', 'G3', 'Bb3'],
+          secs: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+          vel: [0.85, 0.4, 0.4, 0.6, 0.4, 0.4, 0.7, 0.4, 0.4, 0.6, 0.4, 0.4],
+          label: '12/8: quattro gruppi da tre, il primo più forte',
+        },
+        {
+          kind: 'text',
+          text: 'Nella musica romantica capita spesso che una mano divida il movimento in due e l\'altra in tre: due contro tre. Il trucco è contare sei suddivisioni veloci: la mano che fa tre suona sulla 1, la 3 e la 5; quella che fa due sulla 1 e sulla 4.',
+        },
+        {
+          kind: 'listen',
+          notes: ['C3', 'E4', 'F4', 'G3', 'G4', 'C3', 'E4', 'F4', 'G3', 'G4', 'C3', 'E4'],
+          secs: [0, 0.4, 0.2, 0.2, 0.4, 0, 0.4, 0.2, 0.2, 0.4, 0, 0.8],
+          vel: [0.55, 0.6, 0.5, 0.45, 0.5, 0.55, 0.6, 0.5, 0.45, 0.5, 0.55, 0.6],
+          label: 'Due contro tre: la sinistra in due, la destra in tre',
+        },
+        {
+          kind: 'text',
+          text: 'Si impara così: prima a mani unite su un tavolo, contando i sei; poi lentissimo sulla tastiera; poi si smette di contare e si ascolta il ritmo che nasce dalle due mani insieme. La Fantaisie-Impromptu chiede addirittura quattro contro tre: nella partitura completa dell\'app puoi ascoltarla rallentata e vedere le due mani accendersi.',
+        },
+      ],
+      exercises: [
+        { kind: 'quiz', prompt: 'Nel 12/8, quanti movimenti si contano?', answers: ['quattro', 'dodici', 'tre', 'sei'] },
+        { kind: 'quiz', prompt: 'Il 9/8 si conta in…', answers: ['tre movimenti da tre crome', 'nove movimenti', 'tre movimenti da due crome', 'due movimenti'] },
+        { kind: 'quiz', prompt: 'Nel 6/8, quante crome ci sono in un movimento?', answers: ['tre', 'due', 'sei', 'una'] },
+        {
+          kind: 'quiz',
+          prompt: 'Due contro tre, contando sei suddivisioni veloci: la mano che ne fa DUE suona sulla…',
+          answers: ['1 e 4', '1 e 3', '1, 3 e 5', '2 e 5'],
+          explain: 'Sei diviso due fa tre: 1 e 4. La mano che ne fa tre suona ogni due: 1, 3 e 5.',
+        },
+      ],
+    },
+    {
+      id: 'ri-6-sincope',
+      title: 'Sincope, controtempo e accenti spostati',
+      goal: 'Suonare note che cadono fra i battiti senza perdere il tempo, e sentire l\'accento della mazurka.',
+      prereq: 'Tempo, battute e metro.',
+      minutes: 8,
+      blocks: [
+        {
+          kind: 'text',
+          text: 'La SINCOPE è una nota che attacca su un tempo debole (o sulla seconda metà di un movimento) e si prolunga sopra il tempo forte successivo. Il CONTROTEMPO è una nota che attacca fra i battiti, dopo una pausa sul battito. In tutti e due i casi l\'attacco cade dove "non te lo aspetti".',
+        },
+        {
+          kind: 'listen',
+          notes: ['C4', 'E4', 'D4', 'C4', 'E4', 'D4', 'C4'],
+          secs: [0.3, 0.6, 0.3, 0.3, 0.6, 0.3, 0.8],
+          vel: [0.5, 0.75, 0.5, 0.5, 0.75, 0.5, 0.55],
+          label: 'Croma, semiminima, croma: la nota lunga cade fra i battiti',
+        },
+        {
+          kind: 'key',
+          text: 'Il battito non si sposta mai: è la nota che si sposta rispetto a lui. Per questo la sincope si studia contando ad alta voce, o battendo il piede: senza un battito fermo sotto, la sincope diventa solo un ritmo sbagliato.',
+        },
+        {
+          kind: 'text',
+          text: 'Nella mazurka, la danza polacca che Chopin ha portato in tutti i salotti d\'Europa, l\'accento si sposta spesso sul SECONDO o sul TERZO tempo della battuta di 3/4. È ciò che la fa "zoppicare" con eleganza e la distingue dal valzer, che pesa sempre sul primo.',
+        },
+        {
+          kind: 'listen',
+          notes: ['A3', 'C4', 'E4', 'A3', 'C4', 'E4'],
+          secs: [0.5, 0.5, 0.5, 0.5, 0.5, 0.6],
+          vel: [0.45, 0.85, 0.45, 0.45, 0.85, 0.45],
+          label: 'Mazurka: l\'accento sul secondo tempo',
+        },
+        {
+          kind: 'text',
+          text: 'Nella sezione Ritmo → Leggi il ritmo, i livelli 5 e 6 allenano proprio questi attacchi fra i battiti: leggi la figura, conta la battuta d\'attacco e batti.',
+        },
+      ],
+      exercises: [
+        {
+          kind: 'quiz',
+          prompt: 'In una sincope, che cosa si sposta?',
+          answers: ['la nota, rispetto al battito che resta fermo', 'il battito', 'la stanghetta', 'il tempo del pezzo'],
+        },
+        {
+          kind: 'quiz',
+          prompt: 'Nella mazurka l\'accento cade spesso…',
+          answers: ['sul secondo o sul terzo tempo', 'sempre sul primo', 'mai: non ha accenti', 'fra una battuta e l\'altra'],
+        },
+        {
+          kind: 'quiz',
+          prompt: 'Come si studia un passaggio sincopato?',
+          answers: ['contando il battito ad alta voce', 'accelerando', 'senza contare, a orecchio', 'solo con la sinistra'],
+        },
+        { kind: 'value-beats', id: 'croma' },
+      ],
+    },
   ],
 };
 
-// L'ordine è il percorso: prima si misura (intervalli), poi si organizzano le
-// note (scale e tonalità), poi si impilano (accordi), infine si distribuiscono
-// nel tempo (ritmo). Gli accordi DOPO le scale, perché "grado", "terza" e
-// "settima" sono definiti rispetto a una scala.
-export const modules: Module[] = [scaleModule, chordModule, rhythmModule];
+// L'ordine è il percorso verso il repertorio vero: prima si impara a leggere
+// la pagina, poi si misura (intervalli) e si organizzano le note (scale e
+// tonalità), si distribuiscono nel tempo (ritmo), si impara il COME
+// (espressione) e il gesto (tecnica), si impilano (accordi, dopo le scale
+// perché "grado" e "terza" si definiscono su una scala), e infine si arriva ai
+// pezzi di Chopin, uno per lezione.
+export const modules: Module[] = [
+  letturaModule,
+  scaleModule,
+  rhythmModule,
+  espressioneModule,
+  tecnicaModule,
+  chordModule,
+  chopinModule,
+];
 
 export const allLessons: Lesson[] = modules.flatMap(m => m.lessons);
 
