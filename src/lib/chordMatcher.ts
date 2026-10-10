@@ -94,15 +94,36 @@ export const P = {
    */
   GUARD_MS: 70,
   /** Un attacco così forte (rispetto al più forte) che non c'entra con le note attese è uno sbaglio. */
-  STRAY_MIN: 0.3,
+  STRAY_MIN: 0.6,
+  /** Distanza massima (semitoni) perché un attacco più debole accanto a una nota attesa sia dispersione. */
+  LEAK_SEMITONES: 2,
+  /** Ottava raddoppiata accettata quando il resto dell'accordo è arrivato (1 sì, 0 no). */
+  CHORD_DONE: 1,
+  /** …solo in accordi di almeno tante note. */
+  CHORD_DONE_MIN: 4,
+  /** …e almeno tanto più debole della nota attesa vicina. */
+  LEAK_RATIO: 1.6,
   /** Le indulgenze (ottava, ottava raddoppiata) valgono per attacchi vecchi almeno così. */
   SETTLE_MS: 60,
+  /**
+   * Note dell'accordo rimaste indietro: entro CHORD_WINDOW_MS da una nota
+   * dell'accordo trovata, almeno VERIFY_MIN armoniche esclusive (fra le prime
+   * VERIFY_HARMONICS) cresciute, con ampiezza media almeno VERIFY_REL della
+   * nota trovata più forte.
+   */
+  CHORD_WINDOW_MS: 100,
+  VERIFY_HARMONICS: 8,
+  VERIFY_MIN: 2,
+  VERIFY_REL: 0.2,
   /** Armoniche che devono crescere per una nota attesa ribattuta (vedi salience). */
   RESTRIKE_MIN: 3,
   /** Ottava raddoppiata: la nota sopra vale se la sua fondamentale ha almeno tanto in più (1 sì, 0 no). */
   DOUBLING: 1,
   DOUBLE_EXCESS: 1.6,
 };
+
+/** Due bande si considerano sovrapposte se distano meno di così (rapporto di frequenza). */
+const SHARE_K = 2 ** (40 / 1200);
 
 /** Distanze in semitoni fra una nota e le sue armoniche 2–6. */
 const HARMONIC_STEPS = [12, 19, 24, 28, 31];
@@ -123,6 +144,12 @@ export interface Attack {
    * l'altra da sola. Vale solo come ottava raddoppiata.
    */
   doubled?: boolean;
+  /**
+   * Prova "d'accordo": la nota non è uscita dalla ricerca libera, ma l'accordo
+   * atteso è appena stato colpito e le sue armoniche esclusive sono cresciute
+   * quanto quelle delle compagne. Vale solo se nel colpo non c'è una nota estranea.
+   */
+  verified?: boolean;
 }
 
 export class ChordMatcher {
@@ -293,6 +320,26 @@ export class ChordMatcher {
       }
     }
 
+    // Le note dell'accordo rimaste indietro (la più debole, una interna
+    // coperta dalle armoniche delle altre). Solo se l'accordo atteso è appena
+    // partito: una sua nota trovata adesso o negli ultimi CHORD_WINDOW_MS.
+    const chordMates = [
+      ...found.filter(f => this.expected.has(f.midi)),
+      ...this.attacks.filter(a => !a.doubled && !a.verified && this.expected.has(a.midi) && now - a.at <= P.CHORD_WINDOW_MS),
+    ];
+    if (chordMates.length > 0) {
+      const ref = Math.max(...chordMates.map(a => a.strength));
+      const playing = new Set([...this.expected, ...found.map(f => f.midi)]);
+      const view = { pos: peaks.pos, amp: before as Float32Array, count: peaks.count };
+      for (const e of this.expected) {
+        if (found.some(f => f.midi === e) || this.attacks.some(a => a.midi === e && now - a.at < P.MERGE_MS)) continue;
+        const evidence = this.uniqueEvidence(e, playing, view);
+        if (evidence && evidence.count >= P.VERIFY_MIN && evidence.level >= P.VERIFY_REL * ref) {
+          found.push({ midi: e, at: now, strength: evidence.level, verified: true });
+        }
+      }
+    }
+
     // Persistenza: la nota deve esserci in almeno P.PERSIST degli ultimi
     // P.PERSIST_OF fotogrammi. L'attacco si data alla prima volta che compare.
     this.recentFrames.push({ at: now, notes: new Map(found.map(a => [a.midi, a.strength])) });
@@ -304,7 +351,7 @@ export class ChordMatcher {
       if (a.strength > this.loudest) this.loudest = a.strength;
       const prev = this.attacks.find(p => p.midi === a.midi && now - p.at < P.MERGE_MS);
       if (prev) { prev.strength = Math.max(prev.strength, a.strength); continue; }
-      const attack = { midi: a.midi, at: seen[0].at, strength: Math.max(...seen.map(f => f.notes.get(a.midi) ?? 0)) };
+      const attack: Attack = { midi: a.midi, at: seen[0].at, strength: Math.max(...seen.map(f => f.notes.get(a.midi) ?? 0)), verified: a.verified };
       this.attacks.push(attack);
       fresh.push(attack);
     }
@@ -313,6 +360,36 @@ export class ChordMatcher {
       this.attacks.push(d);
     }
     return fresh;
+  }
+
+  /**
+   * Le armoniche "sue" della nota `e`: quelle (fra le prime VERIFY_HARMONICS)
+   * che nessun'altra nota in gioco ha vicino. Restituisce quante sono
+   * cresciute e la loro ampiezza media pesata, confrontabile con la forza
+   * delle note trovate. Nel grave la fondamentale non si separa dal semitono
+   * accanto: si parte dalla seconda armonica.
+   */
+  private uniqueEvidence(e: number, playing: Set<number>, peaks: Peaks): { count: number; level: number } | null {
+    const bands = this.bands[e].slice(0, P.VERIFY_HARMONICS);
+    let sum = 0;
+    let wsum = 0;
+    let count = 0;
+    let max = 0;
+    const amps: number[] = [];
+    bands.forEach((b, h) => {
+      if (h === 0 && e < 48) return;
+      const shared = [...playing].some(o => o !== e && this.bands[o].some(ob => ob.lo <= b.hi * SHARE_K && ob.hi * SHARE_K >= b.lo));
+      if (shared) return;
+      const j = this.bandPeak(b, peaks);
+      const p = j < 0 ? 0 : peaks.amp[j];
+      amps.push(p);
+      if (p > max) max = p;
+      sum += b.w * p;
+      wsum += b.w;
+    });
+    if (wsum === 0 || max === 0) return null;
+    for (const p of amps) if (p >= 0.25 * max) count++;
+    return { count, level: sum / wsum };
   }
 
   /** Il picco più alto dentro una banda, o -1. I picchi sono in ordine di posizione. */
@@ -407,7 +484,17 @@ export class ChordMatcher {
     const strongest = Math.max(0, ...recent.map(a => a.strength));
     // Un attacco forte che non è nessuna delle note attese (né un'armonica):
     // è stata suonata una nota sbagliata. Allora niente indulgenze.
-    const stray = recent.some(a => !classes.has(pc(a.midi)) && a.strength >= P.STRAY_MIN * strongest && !isHarmonic(a));
+    // …ma non lo è la "dispersione": un attacco più debole a un semitono o
+    // due da una nota attesa che c'è davvero (negli accordi fitti lo spettro
+    // si allarga). Se la nota attesa vicina invece manca, è uno sbaglio vero.
+    const near = (a: Attack, b: Attack) => Math.abs(a.midi - b.midi) <= P.LEAK_SEMITONES && Math.abs(a.at - b.at) < 80;
+    const isLeak = (a: Attack) =>
+      recent.some(y => y !== a && !y.verified && expected.includes(y.midi) && near(a, y) && y.strength >= P.LEAK_RATIO * a.strength);
+    // E il contrario: una nota attesa accanto a un attacco estraneo più forte
+    // è probabilmente lo spettro della nota sbagliata, non la nota giusta.
+    const shadowed = (x: Attack) =>
+      recent.some(z => z !== x && !expected.includes(z.midi) && near(x, z) && z.strength > x.strength && !isHarmonic(z));
+    const stray = recent.some(a => !classes.has(pc(a.midi)) && a.strength >= P.STRAY_MIN * strongest && !isHarmonic(a) && !isLeak(a));
 
     // Le prove deboli (un attacco che potrebbe essere un'armonica, l'ottava,
     // l'ottava raddoppiata) aspettano un attimo: se nello stesso colpo arriva
@@ -416,7 +503,7 @@ export class ChordMatcher {
     const used = new Set<Attack>();
     const out: number[] = [];
     for (const e of expected) {
-      const a = recent.find(x => x.midi === e && !x.doubled && !used.has(x) && (!isHarmonic(x) || (!stray && settled.includes(x))));
+      const a = recent.find(x => x.midi === e && !x.doubled && !used.has(x) && !shadowed(x) && ((!isHarmonic(x) && !x.verified) || (!stray && settled.includes(x))));
       if (a) { used.add(a); out.push(e); }
     }
     if (stray) return out;
@@ -435,9 +522,14 @@ export class ChordMatcher {
       if (out.includes(e)) continue;
       const sibling = expected.find(x => x !== e && (x - e) % 12 === 0 && Math.abs(x - e) <= 24 && out.includes(x));
       if (sibling === undefined) continue;
-      // Sopra: serve la prova dell'energia in più. Sotto: la nota più grave ha
-      // armoniche sue (dispari) che quella sopra non ha — se non si è vista, non c'è.
-      if (e > sibling && settled.some(a => a.midi === e && a.doubled)) out.push(e);
+      // Sopra: serve la prova dell'energia in più — oppure, in un accordo
+      // (almeno tre note) di cui tutte le altre note sono arrivate, si accetta
+      // lo stesso: suonata piano, l'ottava sopra non si distingue. Sotto: la
+      // nota più grave ha armoniche sue (dispari); se non si è vista, non c'è.
+      if (e <= sibling) continue;
+      const rest = expected.filter(x => x !== e && !(x > e - 25 && x < e && (e - x) % 12 === 0));
+      const chordDone = P.CHORD_DONE > 0 && expected.length >= P.CHORD_DONE_MIN && rest.every(x => out.includes(x)) && settled.some(a => a.midi === sibling || Math.abs(a.midi - sibling) === 12);
+      if (chordDone || settled.some(a => a.midi === e && a.doubled)) out.push(e);
     }
     return out;
   }

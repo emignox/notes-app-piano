@@ -102,7 +102,14 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 function midiName(m) { return `${NAMES[m % 12]}${Math.floor(m / 12) - 1}`; }
 
 /** Accordi a caso: tre o quattro note più un basso, un accordo al secondo. */
-function chordDrill(count, { pedal = false } = {}) {
+/**
+ * Accordi a caso: tre o quattro note più un basso, un accordo al secondo.
+ * `soft`: una nota dell'accordo suonata molto più piano (succede: il dito
+ *   debole, la nota interna) — deve essere presa lo stesso;
+ * `wrong`: una nota sbagliata di un semitono — l'accordo NON va accettato;
+ * `missing`: una nota non suonata — l'accordo NON va accettato.
+ */
+function chordDrill(count, { pedal = false, soft = false, wrong = 0, missing = 0 } = {}) {
   const events = [];
   const steps = [];
   let t = 0.8;
@@ -111,8 +118,20 @@ function chordDrill(count, { pedal = false } = {}) {
     const shape = [[0, 4, 7], [0, 3, 7], [0, 4, 7, 12], [0, 3, 8], [0, 5, 9], [0, 4, 10]][Math.floor(rand() * 6)];
     const notes = shape.map(d => root + d);
     if (rand() < 0.6) notes.push(root - 12 - (rand() < 0.5 ? 0 : 5));
-    for (const m of notes) events.push({ note: midiName(m), t: t + rand() * 0.025, dur: 0.85, vel: 0.5 * (0.85 + 0.3 * rand()) });
-    steps.push({ t, req: notes, wrong: false });
+    const weak = soft ? Math.floor(rand() * notes.length) : -1;
+    const bad = rand() < wrong ? Math.floor(rand() * notes.length) : -1;
+    const gone = bad < 0 && rand() < missing ? Math.floor(rand() * notes.length) : -1;
+    notes.forEach((m, i) => {
+      if (i === gone) return;
+      let played = m;
+      if (i === bad) {
+        played = m + (rand() < 0.5 ? -1 : 1);
+        if (notes.includes(played)) played += played > m ? 1 : -1;
+      }
+      const vel = 0.5 * (0.85 + 0.3 * rand()) * (i === weak ? 0.4 : 1);
+      events.push({ note: midiName(played), t: t + rand() * 0.025, dur: 0.85, vel });
+    });
+    steps.push({ t, req: notes, wrong: bad >= 0 || gone >= 0 });
     t += 1.0 + 0.2 * rand();
   }
   return { events, steps, pedal };
@@ -294,11 +313,15 @@ if (only !== 'convalida') run('TARATURA (pezzi pari)', [
   ...tuning.map((p, i) => ({ id: p.title.slice(0, 28), perf: performPiece(p), env: envs[i % envs.length] })),
   { id: 'accordi', perf: chordDrill(24), env: room },
   { id: 'accordi col pedale', perf: chordDrill(24, { pedal: true }), env: bigRoom },
+  { id: 'accordi, una nota piano', perf: chordDrill(30, { soft: true }), env: room },
+  { id: 'accordi · SBAGLI e MANCANTI', perf: chordDrill(40, { wrong: 0.3, missing: 0.3 }), env: room },
   ...pick(['beethoven-per-elisa', 'chopin-valzer-la-minore', 'brahms-ninna-nanna', 'chopin-marcia-funebre', 'mozart-k265-ah-vous-dirai']).map((p, i) => ({ id: `${p.title.slice(0, 18)} · SBAGLI`, perf: performPiece(p, { wrongEvery: 0.3 }), env: envs[i % envs.length] })),
 ], [{ name: '60 fps' }, { name: '30 fps', fps: 30 }]);
 
 if (only !== 'taratura') run('CONVALIDA (pezzi dispari, mai usati per tarare)', [
   ...validation.map((p, i) => ({ id: p.title.slice(0, 28), perf: performPiece(p), env: envs[(i + 1) % envs.length] })),
   { id: 'accordi, stanza rumorosa', perf: chordDrill(20), env: noisy },
+  { id: 'accordi, una nota piano', perf: chordDrill(30, { soft: true }), env: bigRoom },
+  { id: 'accordi piano · SBAGLI e MANCANTI', perf: chordDrill(40, { soft: true, wrong: 0.3, missing: 0.3 }), env: cheapMic },
   ...validation.slice(0, 3).map(p => ({ id: `${p.title.slice(0, 18)} · SBAGLI`, perf: performPiece(p, { wrongEvery: 0.25 }), env: bigRoom })),
 ], [{ name: '48 kHz' }, { name: '44,1 kHz', sr: 44100 }, { name: '30 fps', fps: 30 }]);

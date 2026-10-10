@@ -135,8 +135,10 @@ export default function App() {
       level: pitch.level,
       confirmedNote: pitch.confirmedNote,
       suppress: pitch.suppress,
+      expect: pitch.expect,
+      chordMatch: pitch.chordMatch,
     }),
-    [pitch.isListening, pitch.liveNote, pitch.level, pitch.confirmedNote, pitch.suppress],
+    [pitch.isListening, pitch.liveNote, pitch.level, pitch.confirmedNote, pitch.suppress, pitch.expect, pitch.chordMatch],
   );
 
   return (
@@ -178,10 +180,10 @@ export default function App() {
                 progress={progress}
                 audio={audio}
                 mic={mic}
-                notify={notify}
                 section={songSection}
                 onSection={setSongSection}
                 initialMelodyId={intent?.melodyId}
+                onToggleMic={toggleMic}
               />
             ) : (
               <PieceView

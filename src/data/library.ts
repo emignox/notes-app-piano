@@ -11,8 +11,9 @@
 // licenza CC BY-NC-SA 4.0: l'attribuzione compare nel Leggio.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Piece } from '../types';
+import type { Melody, Piece, PieceStep } from '../types';
 import { pieces } from './pieces';
+import { DURATION_BEATS } from '../lib/score';
 
 export type Level = 1 | 2 | 3 | 4 | 5;
 
@@ -242,3 +243,47 @@ export const LEVEL_LABEL: Record<Level, string> = {
   4: 'Avanzato',
   5: 'Virtuoso',
 };
+
+/**
+ * Una melodia (una mano, una nota alla volta) come brano del Leggio: stesso
+ * pentagramma, stessa tastiera, stessa cascata dei pezzi. Il metro si ricava
+ * dalla lunghezza (3/4 se le battute tornano solo a tre); la tonalità resta Do,
+ * e le alterazioni si scrivono accanto alle note.
+ */
+export function melodyToPiece(m: Melody): Piece {
+  const steps: PieceStep[] = m.notes.map(n => ({
+    duration: n.duration,
+    beats: DURATION_BEATS[n.duration],
+    treble: n.clef === 'treble' ? [n.toneNote] : [],
+    bass: n.clef === 'bass' ? [n.toneNote] : [],
+  }));
+  const total = steps.reduce((a, st) => a + st.beats, 0);
+  const meter = total % 4 !== 0 && total % 3 === 0 ? '3/4' : '4/4';
+  return {
+    id: `melodia-${m.id}`,
+    title: m.title,
+    composer: m.composer,
+    difficulty: m.difficulty,
+    level: 1,
+    emoji: m.emoji,
+    bpm: m.bpm,
+    hint: 'Una nota alla volta: leggila sul rigo, trovala sulla tastiera.',
+    meter,
+    key: { tonic: 'C', mode: 'maggiore' },
+    steps,
+  };
+}
+
+/** La melodia pronta per il Leggio. */
+export function melodyEntry(m: Melody): LibraryEntry {
+  return {
+    id: `melodia-${m.id}`,
+    title: m.title,
+    composer: normalizeComposer(m.composer),
+    level: m.difficulty === 'facile' ? 1 : m.difficulty === 'medio' ? 2 : 3,
+    bpm: m.bpm,
+    startRate: 0.8,
+    about: `${m.notes.length} note, una mano.`,
+    source: { kind: 'piece', piece: melodyToPiece(m) },
+  };
+}
