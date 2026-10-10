@@ -1,13 +1,16 @@
 // La libreria dei brani, come in un negozio di app: un brano in evidenza,
-// filtri per livello e compositore, copertine colorate. Ogni brano si apre
-// nel Leggio; i pezzi scritti per l'app hanno anche lo studio guidato.
+// scaffali per livello, filtri per livello e compositore, copertine con il
+// ritratto del compositore. Ogni brano si apre nel Leggio; i pezzi scritti per
+// l'app hanno anche lo studio guidato.
 
 import { useMemo, useState } from 'react';
-import { BookOpen, Play, Sparkles } from 'lucide-react';
+import { BookOpen, Play } from 'lucide-react';
 import type { Level, LibraryEntry } from '../data/library';
 import { COMPOSER_STYLE, LEVEL_LABEL, composerStyle, featuredToday, library } from '../data/library';
+import { PORTRAIT } from '../data/images';
 import type { Piece } from '../types';
 import type { ProgressApi } from '../hooks/useProgress';
+import { ImageCover, Section } from './ui';
 
 interface Props {
   progress: ProgressApi;
@@ -19,64 +22,74 @@ function Dots({ level }: { level: Level }) {
   return (
     <span className="inline-flex gap-0.5" aria-label={`livello ${level} di 5`}>
       {[1, 2, 3, 4, 5].map(i => (
-        <span key={i} className={`h-1.5 w-1.5 rounded-full ${i <= level ? 'bg-white' : 'bg-white/30'}`} />
+        <span key={i} className={`h-1 w-1 rounded-full ${i <= level ? 'bg-white' : 'bg-white/30'}`} />
       ))}
     </span>
   );
 }
 
+/** La copertina: ritratto del compositore (o la sua tinta), titolo in basso. */
 function Cover({ entry, big = false }: { entry: LibraryEntry; big?: boolean }) {
   const st = composerStyle(entry.composer);
+  const img = PORTRAIT[entry.composer];
   return (
-    <div
-      className={`relative flex flex-col justify-between overflow-hidden rounded-2xl p-3 text-white ${big ? 'min-h-40 sm:min-h-48' : 'min-h-28'}`}
-      style={{ background: `linear-gradient(135deg, ${st.from}, ${st.to})` }}
+    <ImageCover
+      src={img?.src}
+      position={img?.position ?? 'center 22%'}
+      light={img?.light}
+      tint={st.from}
+      className={`flex flex-col justify-between ${big ? 'aspect-[16/11] rounded-[24px] p-5 sm:aspect-[21/9]' : 'aspect-[4/5] rounded-[18px] p-3'}`}
     >
-      <span className={`absolute -right-3 -top-4 select-none opacity-25 ${big ? 'text-8xl' : 'text-6xl'}`}>{st.emoji}</span>
-      <div className="relative flex items-center justify-between gap-2">
-        <span className="rounded-full bg-black/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest">{st.short}</span>
+      <div className="flex items-center justify-between gap-2">
+        {big ? (
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80">Brano del giorno</span>
+        ) : (
+          <span />
+        )}
         <Dots level={entry.level} />
       </div>
-      <div className="relative">
-        <p className={`font-black leading-tight drop-shadow ${big ? 'text-2xl sm:text-3xl' : 'text-base'}`}>{entry.title}</p>
-        {entry.subtitle && <p className="mt-0.5 text-[11px] font-semibold text-white/85">{entry.subtitle}</p>}
+      {!img && <span className={`absolute right-3 top-8 select-none opacity-20 ${big ? 'text-8xl' : 'text-5xl'}`}>{st.emoji}</span>}
+      <div>
+        <p className={`font-bold leading-tight tracking-tight text-white ${big ? 'text-[28px] sm:text-[34px]' : 'text-[15px]'}`}>{entry.title}</p>
+        {entry.subtitle && <p className={`mt-0.5 text-white/75 ${big ? 'text-sm' : 'line-clamp-2 text-[11px]'}`}>{entry.subtitle}</p>}
       </div>
-    </div>
+    </ImageCover>
   );
 }
 
 function EntryCard({ entry: e, best, onOpen, onGuided }: { entry: LibraryEntry; best: number; onOpen: Props['onOpen']; onGuided: Props['onGuided'] }) {
+  const st = composerStyle(e.composer);
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
-      <button type="button" onClick={() => onOpen(e)} className="block w-full p-1.5 text-left active:scale-[0.99]">
+    <div className="flex flex-col gap-2">
+      <button type="button" onClick={() => onOpen(e)} className="block w-full text-left transition-transform active:scale-[0.98]" aria-label={`Apri ${e.title} nel Leggio`}>
         <Cover entry={e} />
       </button>
-      <div className="flex flex-1 flex-col gap-2 px-3 pb-3 pt-1">
-        <p className="line-clamp-2 text-xs leading-snug text-ink2">{e.about}</p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {best > 0 && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-500">record {best}%</span>}
-          {e.source.kind === 'xml'
-            ? <span className="rounded-full bg-surface2 px-2 py-0.5 text-[10px] font-bold text-ink3">partitura originale completa</span>
-            : <span className="rounded-full bg-surface2 px-2 py-0.5 text-[10px] font-bold text-ink3">con studio guidato</span>}
-        </div>
-        <div className="mt-auto flex gap-2">
-          <button type="button" onClick={() => onOpen(e)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-sm font-black text-white active:scale-[0.98]">
-            <Play className="h-4 w-4" /> Leggio
-          </button>
-          {e.source.kind === 'piece' && (
+      <div className="px-0.5">
+        <p className="truncate text-[13px] font-semibold text-ink">{st.short}</p>
+        <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-ink3">{e.about}</p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+          {best > 0 && <span className="font-semibold text-emerald-400">record {best}%</span>}
+          {e.source.kind === 'piece' ? (
             <button
               type="button"
               onClick={() => { if (e.source.kind === 'piece') onGuided(e.source.piece); }}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface2 px-3 py-2.5 text-sm font-bold text-ink2 active:scale-[0.98]"
+              className="flex items-center gap-1 font-semibold text-brand"
             >
-              <BookOpen className="h-4 w-4" /> Guidato
+              <BookOpen className="h-3 w-3" /> Studio guidato
             </button>
+          ) : (
+            <span className="text-ink3">partitura originale</span>
           )}
         </div>
       </div>
     </div>
   );
 }
+
+const chip = (active: boolean) =>
+  `shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+    active ? 'border-ink bg-ink text-canvas' : 'border-line text-ink2 hover:border-ink3/60'
+  }`;
 
 export function Library({ progress, onOpen, onGuided }: Props) {
   const [level, setLevel] = useState<Level | 0>(0);
@@ -96,86 +109,71 @@ export function Library({ progress, onOpen, onGuided }: Props) {
   const best = (e: LibraryEntry) => progress.data.melodyBest[`leggio:${e.id}`] ?? 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
       {/* In evidenza */}
-      <button type="button" onClick={() => onOpen(featured)} className="text-left active:scale-[0.99]">
-        <div className="relative">
+      <div className="relative">
+        <button type="button" onClick={() => onOpen(featured)} className="block w-full text-left active:scale-[0.99]">
           <Cover entry={featured} big />
-          <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-sm font-black text-slate-900 shadow-lg">
-            <Play className="h-4 w-4" /> Apri
-          </div>
-          <span className="absolute left-3 top-10 flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-900">
-            <Sparkles className="h-3 w-3" /> Brano del giorno
-          </span>
+        </button>
+        <div className="pointer-events-none absolute bottom-5 right-5 flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black">
+          <Play className="h-4 w-4 fill-black" /> Apri
         </div>
-      </button>
+      </div>
 
       {/* Filtri */}
-      <div className="thin-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
-        {([0, 1, 2, 3, 4, 5] as (Level | 0)[]).map(l => (
-          <button
-            key={l}
-            type="button"
-            onClick={() => setLevel(l)}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${level === l ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink2'}`}
-          >
-            {l === 0 ? 'Tutti' : LEVEL_LABEL[l]}
-          </button>
-        ))}
-      </div>
-      <div className="thin-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
-        <button
-          type="button"
-          onClick={() => setComposer(null)}
-          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${!composer ? 'border-ink bg-ink text-canvas' : 'border-line bg-surface text-ink2'}`}
-        >
-          Tutti i compositori
-        </button>
-        {composers.map(c => {
-          const st = composerStyle(c);
-          return (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setComposer(composer === c ? null : c)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold ${composer === c ? 'border-transparent text-white' : 'border-line bg-surface text-ink2'}`}
-              style={composer === c ? { background: `linear-gradient(135deg, ${st.from}, ${st.to})` } : undefined}
-            >
-              {st.emoji} {st.short}
+      <div className="space-y-2">
+        <div className="thin-scroll -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5">
+          {([0, 1, 2, 3, 4, 5] as (Level | 0)[]).map(l => (
+            <button key={l} type="button" onClick={() => setLevel(l)} className={chip(level === l)}>
+              {l === 0 ? 'Tutti i livelli' : LEVEL_LABEL[l]}
             </button>
-          );
-        })}
+          ))}
+        </div>
+        <div className="thin-scroll -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5">
+          <button type="button" onClick={() => setComposer(null)} className={chip(!composer)}>
+            Tutti
+          </button>
+          {composers.map(c => (
+            <button key={c} type="button" onClick={() => setComposer(composer === c ? null : c)} className={chip(composer === c)}>
+              {composerStyle(c).short}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Brani: senza filtri, uno scaffale per livello; con i filtri, la griglia. */}
       {filtered ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {shown.map(e => <EntryCard key={e.id} entry={e} best={best(e)} onOpen={onOpen} onGuided={onGuided} />)}
-        </div>
+        <Section label={`${shown.length} ${shown.length === 1 ? 'brano' : 'brani'}`}>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3">
+            {shown.map(e => <EntryCard key={e.id} entry={e} best={best(e)} onOpen={onOpen} onGuided={onGuided} />)}
+          </div>
+          {shown.length === 0 && <p className="py-6 text-center text-sm text-ink3">Nessun brano con questi filtri.</p>}
+        </Section>
       ) : (
         ([1, 2, 3, 4, 5] as Level[]).map(l => {
           const row = library.filter(e => e.level === l);
           if (row.length === 0) return null;
           return (
-            <section key={l} className="space-y-1.5">
-              <div className="flex items-baseline justify-between px-0.5">
-                <h3 className="text-base font-black text-ink">{LEVEL_LABEL[l]}</h3>
-                <button type="button" onClick={() => setLevel(l)} className="text-xs font-bold text-brand">
-                  Vedi tutti ({row.length})
+            <Section
+              key={l}
+              label={LEVEL_LABEL[l]}
+              action={
+                <button type="button" onClick={() => setLevel(l)} className="text-[13px] font-medium text-brand">
+                  Vedi tutti
                 </button>
-              </div>
-              <div className="thin-scroll -mx-3 flex snap-x snap-mandatory scroll-px-3 gap-3 overflow-x-auto px-3 pb-1">
+              }
+            >
+              <div className="thin-scroll -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1">
                 {row.map(e => (
-                  <div key={e.id} className="w-[78%] max-w-80 flex-none snap-start sm:w-72">
+                  <div key={e.id} className="w-[42%] max-w-52 flex-none snap-start sm:w-44">
                     <EntryCard entry={e} best={best(e)} onOpen={onOpen} onGuided={onGuided} />
                   </div>
                 ))}
               </div>
-            </section>
+            </Section>
           );
         })
       )}
-      {shown.length === 0 && <p className="py-6 text-center text-sm text-ink3">Nessun brano con questi filtri.</p>}
     </div>
   );
 }

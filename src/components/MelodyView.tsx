@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, Lightbulb, Lock, Play, Volume2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lightbulb, Lock, Play, Volume2 } from 'lucide-react';
 import type { AnswerState, Melody, MelodyNote, NoteEntry, NoteResult } from '../types';
 import { melodies } from '../data/melodies';
 import { describePosition, intervalLabel, italianOf, motionLabel, parseNote, pitchClass, samePitchClass } from '../lib/notes';
@@ -16,7 +16,7 @@ import { haptics } from '../lib/haptics';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
-import { Btn, Card, Panel, Pill, Segmented } from './ui';
+import { Btn, Card, PageHeader, Panel, Section, Segmented } from './ui';
 import { useScrollTop } from '../hooks/useScrollTop';
 import type { Notify } from './ui';
 import { Staff } from './Staff';
@@ -91,48 +91,37 @@ function MelodyCard({
   const missing = melody.requiredToneNotes.filter(t => !learned.includes(t));
   const open = missing.length === 0;
 
-  const diffTone = melody.difficulty === 'facile' ? 'good' : melody.difficulty === 'medio' ? 'warn' : 'bad';
-
   return (
-    <div className={`rounded-2xl border p-3 transition-all ${open ? 'border-line bg-surface' : 'border-line/60 bg-surface/60'}`}>
-      <button type="button" onClick={() => onSelect(melody, !open)} className="flex w-full items-start gap-3 text-left">
-        <span className="mt-0.5 flex-shrink-0 text-3xl">{melody.emoji}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-ink">{melody.title}</span>
-            <Pill tone={diffTone}>{melody.difficulty}</Pill>
-            {!open && <Lock className="h-3.5 w-3.5 text-ink3" />}
-          </div>
-          <p className="mt-0.5 text-xs text-ink2">{melody.composer} · {melody.notes.length} note</p>
-          {best > 0 && (
-            <p className="mt-1 text-xs font-bold text-amber-400">
-              {stars(best)} <span className="text-ink3">record {best}%</span>
-            </p>
-          )}
-          {!open && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              <span className="text-[11px] text-ink3">ti servono:</span>
-              {missing.slice(0, 6).map(t => (
-                <span key={t} className="rounded bg-surface2 px-1.5 py-0.5 text-[11px] text-ink2">
-                  {italianOf(t)}
-                  {parseNote(t).octave}
-                </span>
-              ))}
-              {missing.length > 6 && <span className="text-[11px] text-ink3">+{missing.length - 6}</span>}
-            </div>
-          )}
-        </div>
-      </button>
-      {!open && (
-        <button
-          type="button"
-          onClick={() => onSelect(melody, true)}
-          className="mt-2 w-full rounded-lg border border-line py-1.5 text-xs font-semibold text-ink2"
-        >
-          Provala comunque
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={() => onSelect(melody, !open)}
+      className="flex w-full items-center gap-3.5 px-4 py-3 text-left transition-colors active:bg-surface2"
+    >
+      <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-surface2 text-2xl ${open ? '' : 'opacity-60 grayscale'}`}>
+        {melody.emoji}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-[15px] font-semibold tracking-tight ${open ? 'text-ink' : 'text-ink2'}`}>{melody.title}</span>
+        <span className="mt-0.5 block truncate text-[13px] text-ink3">
+          {melody.composer} · {melody.notes.length} note · {melody.difficulty}
+        </span>
+        {!open && (
+          <span className="mt-0.5 block truncate text-[11px] text-ink3">
+            ti servono: {missing.slice(0, 6).map(t => `${italianOf(t)}${parseNote(t).octave}`).join(' ')}
+            {missing.length > 6 ? ` +${missing.length - 6}` : ''}
+          </span>
+        )}
+      </span>
+      {best > 0 ? (
+        <span className="flex-shrink-0 text-right text-[11px] font-semibold text-amber-400">
+          {stars(best)}
+          <span className="block font-medium tabular-nums text-ink3">{best}%</span>
+        </span>
+      ) : !open ? (
+        <Lock className="h-4 w-4 flex-shrink-0 text-ink3" />
+      ) : null}
+      <ChevronRight className="h-4 w-4 flex-shrink-0 text-ink3/60" />
+    </button>
   );
 }
 
@@ -500,33 +489,38 @@ export function MelodyView({ progress, audio, mic, notify, section, onSection, i
 
   const open = melodies.filter(m => m.requiredToneNotes.every(t => learned.includes(t)));
 
+  const locked = melodies.filter(m => !open.includes(m));
+  const row = (m: Melody) => (
+    <MelodyCard
+      key={m.id}
+      melody={m}
+      learned={learned}
+      best={progress.data.melodyBest[m.id] ?? 0}
+      onSelect={mel => setSelected(mel)}
+    />
+  );
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
+      <PageHeader eyebrow="Repertorio" title="Canzoni" subtitle="Melodie a una mano: leggi le note una dopo l'altra, al tuo tempo." />
       <Segmented
         value={section}
         onChange={onSection}
         options={[
-          { value: 'melodie', label: 'Melodie' },
           { value: 'pezzi', label: 'Brani' },
+          { value: 'melodie', label: 'Melodie' },
         ]}
       />
-      <Card>
-        <h2 className="text-xl font-black text-ink">Canzoncine</h2>
-        <p className="mt-0.5 text-sm text-ink2">
-          {open.length} di {melodies.length} disponibili · leggi le note una dopo l'altra, al tuo tempo
-        </p>
-      </Card>
-      <div className="flex flex-col gap-2.5">
-        {melodies.map(m => (
-          <MelodyCard
-            key={m.id}
-            melody={m}
-            learned={learned}
-            best={progress.data.melodyBest[m.id] ?? 0}
-            onSelect={mel => setSelected(mel)}
-          />
-        ))}
-      </div>
+      {open.length > 0 && (
+        <Section label="Le puoi già leggere" action={<span className="text-xs tabular-nums text-ink3">{open.length}</span>}>
+          <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface">{open.map(row)}</div>
+        </Section>
+      )}
+      {locked.length > 0 && (
+        <Section label="Con le prossime note" action={<span className="text-xs tabular-nums text-ink3">{locked.length}</span>}>
+          <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface">{locked.map(row)}</div>
+        </Section>
+      )}
     </div>
   );
 }

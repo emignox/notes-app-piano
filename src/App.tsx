@@ -48,7 +48,7 @@ export default function App() {
   const pitch = usePitchDetection();
 
   const [tab, setTab] = useState<Tab>('practice');
-  const [songSection, setSongSection] = useState<SongSection>('melodie');
+  const [songSection, setSongSection] = useState<SongSection>('pezzi');
   /** Dove portare l'utente dentro la scheda (dal piano di oggi). Vale una volta. */
   const [intent, setIntent] = useState<Intent | null>(null);
   // Cambia a ogni navigazione: la scheda riparte dal suo inizio, anche quando
@@ -152,9 +152,11 @@ export default function App() {
         onToggleMic={toggleMic}
         audioOn={audio.running}
         onTestAudio={testAudio}
+        settingsOpen={tab === 'settings'}
+        onOpenSettings={() => navigate('settings')}
       />
 
-      <main className="mx-auto max-w-2xl space-y-3 px-3 pb-28 pt-3">
+      <main className="mx-auto max-w-2xl space-y-4 px-4 pb-28 pt-4">
         {pitch.permissionDenied && (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">
             Microfono negato: controlla i permessi del browser per usare il piano vero come risposta.
@@ -185,7 +187,7 @@ export default function App() {
               <PieceView
                 progress={progress}
                 audio={audio}
-                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, suppress: pitch.suppress }}
+                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, suppress: pitch.suppress, expect: pitch.expect, chordMatch: pitch.chordMatch }}
                 notify={notify}
                 section={songSection}
                 onSection={setSongSection}

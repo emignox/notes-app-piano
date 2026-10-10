@@ -21,14 +21,16 @@
 }
 
 :root {
-  --c-canvas: #080c1a;
-  --c-surface: #111a2f;
-  --c-surface2: #1a2440;
-  --c-line: #27324f;
-  --c-ink: #eef2ff;
-  --c-ink2: #a7b2cf;
-  --c-ink3: #6d7a9b;
-  --c-brand: #6366f1;
+  /* Quasi nero e grigi neutri: lo spazio è dello spartito e delle immagini,
+     il colore è uno solo (l'indaco) e segna solo ciò che è attivo. */
+  --c-canvas: #09090b;
+  --c-surface: #131316;
+  --c-surface2: #1b1b20;
+  --c-line: #26262d;
+  --c-ink: #f5f5f7;
+  --c-ink2: #a1a1aa;
+  --c-ink3: #71717a;
+  --c-brand: #6d6af8;
   --c-brand2: #a855f7;
   --c-paper: #f8f4e9;
   --c-paper2: #f1ebda;
@@ -36,13 +38,13 @@
 }
 
 :root[data-theme="light"] {
-  --c-canvas: #f5f6fb;
+  --c-canvas: #f6f6f4;
   --c-surface: #ffffff;
-  --c-surface2: #f0f2f9;
-  --c-line: #e0e5f0;
-  --c-ink: #121a2c;
-  --c-ink2: #4c5771;
-  --c-ink3: #7b87a2;
+  --c-surface2: #efefec;
+  --c-line: #e3e3df;
+  --c-ink: #0c0c0e;
+  --c-ink2: #52525b;
+  --c-ink3: #85858d;
   --c-brand: #4f46e5;
   --c-brand2: #9333ea;
   --c-paper: #fffdf6;
@@ -62,15 +64,26 @@ body {
   margin: 0;
   background: var(--c-canvas);
   color: var(--c-ink);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: none;
-  background-image:
-    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--c-brand) 16%, transparent), transparent 30rem),
-    radial-gradient(circle at 95% 25%, color-mix(in srgb, var(--c-brand2) 10%, transparent), transparent 26rem);
-  background-attachment: fixed;
+  font-feature-settings: 'tnum' 0, 'cv11' 1;
 }
+
+/* Etichetta di sezione: piccola, maiuscola, spaziata. Divide la pagina senza
+   bisogno di riquadri. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-ink3);
+}
+
+/* Le immagini entrano piano, senza lampi. */
+.img-fade { animation: img-fade 0.45s ease-out; }
+@keyframes img-fade { from { opacity: 0; } to { opacity: 1; } }
 
 :root[data-large-text="true"] { font-size: 112.5%; }
 

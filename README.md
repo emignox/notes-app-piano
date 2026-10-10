@@ -12,7 +12,7 @@ App personale (PWA, solo front-end) per imparare a leggere e suonare il pianofor
 - **Ritmo**: lettura ritmica a livelli (figure, pause, crome, punto, controtempo, semicrome), battuta a tempo sullo schermo o con un tasto del piano, misurata in millisecondi sull'orologio audio.
 - **Canzoni** (anche in chiave di basso e con alterazioni) e **pezzi a due mani** con lo studio guidato, per sezioni e mani separate.
 - **Libreria e Leggio** (*Canzoni → Brani*): 29 brani dai primi passi a Chopin, con il brano del giorno e i filtri per livello e compositore. Il Leggio è lo spartito a tutto schermo per telefono e iPad: una sola riga grande che scorre da sola, la nota da suonare accesa sul suo rigo con il nome (Si♭, non La♯), la tastiera che si accende, la cascata di note, *Ascolta* e *Esercita* (il brano aspetta te; se studi una mano, l'altra la suona l'app), gruppi di quattro battute e velocità regolabile.
-- **Microfono**: rispondi suonando sul piano vero, ovunque. Monofonico (gli accordi si arpeggiano).
+- **Microfono**: rispondi suonando sul piano vero, ovunque. Nelle letture una nota alla volta; nei brani (Leggio e studio guidato) l'app sa quali note aspetta e le cerca nello spettro, così gli accordi si suonano insieme, anche col pedale.
 
 ## Comandi
 
@@ -23,6 +23,7 @@ npm run build        # controllo dei tipi + build di produzione
 npm run lint
 npm run check:pezzi  # verifica i pezzi, il loro MusicXML e le partiture della libreria
 npm run bench:mic    # banco di prova del microfono (macOS)
+npm run bench:pezzi  # banco di prova del microfono nei brani: accordi, pedale, due mani
 ```
 
 ## Banco di prova del microfono
@@ -35,6 +36,8 @@ Ci sono due gruppi: *taratura* (su cui sono state scelte le soglie) e *convalida
 git show HEAD:src/lib/noteTracker.ts > /tmp/vecchio.ts
 npm run bench:mic -- --tracker=/tmp/vecchio.ts
 ```
+
+`npm run bench:pezzi` fa lo stesso con i pezzi dell'app a due mani (accordi sfasati di qualche millisecondo, pedale, tempo irregolare) e il giro del Leggio: a ogni passo aspetta le note del passo. Confronta il rilevatore di una nota alla volta con quello per gli accordi (`src/lib/chordMatcher.ts`) e conta passi presi, persi, presi prima di essere suonati, e note sbagliate accettate.
 
 La prima volta scarica i campioni (~2 MB) in `scripts/mic-bench/.cache/` e li decodifica con `afconvert`; la voce di disturbo è generata con `say`.
 

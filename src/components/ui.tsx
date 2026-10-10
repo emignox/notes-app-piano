@@ -1,6 +1,10 @@
 // Piccoli mattoncini condivisi: superfici, anelli di progresso, pulsanti,
 // festeggiamenti. Tenuti insieme perché sono tutti brevi e usati da tutte le
 // schermate.
+//
+// Lo stile è minimale: superfici piatte con un filo di bordo, niente ombre,
+// un solo colore d'accento. Le pagine si dividono con titoli e etichette di
+// sezione, non con riquadri dentro riquadri.
 
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -15,20 +19,19 @@ export function Card({
   pad?: string;
 }) {
   return (
-    <div className={`rounded-[1.35rem] border border-line/80 bg-surface shadow-[0_12px_34px_rgba(0,0,0,0.10)] ${pad} ${className}`}>{children}</div>
+    <div className={`rounded-[20px] border border-line bg-surface ${pad} ${className}`}>{children}</div>
   );
 }
 
 export function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-line/80 bg-surface2 ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-line/60 bg-surface2/70 ${className}`}>{children}</div>;
 }
 
 type BtnVariant = 'primary' | 'ghost' | 'soft' | 'danger' | 'success';
 
 const BTN_STYLES: Record<BtnVariant, string> = {
-  primary:
-    'bg-brand text-white shadow-lg shadow-brand/25 hover:brightness-110 active:brightness-95',
-  soft: 'bg-surface2 text-ink border border-line hover:border-brand/60',
+  primary: 'bg-brand text-white hover:brightness-110 active:brightness-95',
+  soft: 'bg-surface2 text-ink border border-line hover:border-ink3/60',
   ghost: 'text-ink2 hover:text-ink hover:bg-surface2',
   danger: 'bg-red-600 text-white hover:bg-red-500',
   success: 'bg-emerald-600 text-white hover:bg-emerald-500',
@@ -57,7 +60,7 @@ export function Btn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition-all active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 ${BTN_STYLES[variant]} ${full ? 'w-full' : ''} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-semibold tracking-tight transition-all active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 ${BTN_STYLES[variant]} ${full ? 'w-full' : ''} ${className}`}
     >
       {children}
     </button>
@@ -74,15 +77,15 @@ export function Pill({
   className?: string;
 }) {
   const tones = {
-    neutral: 'bg-surface2 text-ink2 border-line',
-    brand: 'bg-brand/15 text-brand border-brand/40',
-    good: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40',
-    bad: 'bg-red-500/15 text-red-400 border-red-500/40',
-    warn: 'bg-amber-500/15 text-amber-400 border-amber-500/40',
+    neutral: 'bg-surface2 text-ink2',
+    brand: 'bg-brand/15 text-brand',
+    good: 'bg-emerald-500/12 text-emerald-400',
+    bad: 'bg-red-500/12 text-red-400',
+    warn: 'bg-amber-500/12 text-amber-400',
   } as const;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${tones[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tones[tone]} ${className}`}
     >
       {children}
     </span>
@@ -132,7 +135,7 @@ export function Ring({
 
 export function Bar({ pct, className = '', color = 'bg-brand' }: { pct: number; className?: string; color?: string }) {
   return (
-    <div className={`h-2 w-full overflow-hidden rounded-full bg-surface2 ${className}`}>
+    <div className={`h-1.5 w-full overflow-hidden rounded-full bg-surface2 ${className}`}>
       <div
         className={`h-full rounded-full ${color} transition-[width] duration-500`}
         style={{ width: `${Math.max(0, Math.min(100, pct * 100))}%` }}
@@ -152,14 +155,14 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex gap-1 rounded-2xl border border-line bg-surface2 p-1">
+    <div className="flex gap-0.5 rounded-xl bg-surface2 p-0.5">
       {options.map(o => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`flex-1 rounded-xl py-2 text-sm font-bold transition-all ${
-            value === o.value ? 'bg-brand text-white shadow-sm' : 'text-ink2'
+          className={`flex-1 rounded-[10px] py-1.5 text-[13px] font-semibold transition-all ${
+            value === o.value ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.35)] ring-1 ring-line' : 'text-ink3 hover:text-ink2'
           }`}
         >
           {o.label}
@@ -171,9 +174,95 @@ export function Segmented<T extends string>({
 
 export function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
-    <div className="mb-2">
-      <h2 className="text-sm font-bold tracking-wide text-ink uppercase">{children}</h2>
+    <div className="mb-2 px-1">
+      <h2 className="eyebrow">{children}</h2>
       {hint && <p className="mt-0.5 text-xs text-ink3">{hint}</p>}
+    </div>
+  );
+}
+
+/** Il titolo grande della pagina, come nelle app di sistema. */
+export function PageHeader({
+  eyebrow,
+  title,
+  subtitle,
+  right,
+}: {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  right?: ReactNode;
+}) {
+  return (
+    <header className="flex items-end justify-between gap-3 px-1 pt-1">
+      <div className="min-w-0">
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+        <h1 className="mt-0.5 text-[30px] font-bold leading-[1.08] tracking-[-0.02em] text-ink sm:text-[34px]">{title}</h1>
+        {subtitle && <p className="mt-1 text-[15px] leading-snug text-ink2">{subtitle}</p>}
+      </div>
+      {right && <div className="shrink-0">{right}</div>}
+    </header>
+  );
+}
+
+/** Una sezione della pagina: etichetta in alto, eventuale azione a destra. */
+export function Section({ label, action, children, className = '' }: { label: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={`space-y-2.5 ${className}`}>
+      <div className="flex items-baseline justify-between gap-3 px-1">
+        <h2 className="eyebrow">{label}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Copertina con immagine: la foto riempie il riquadro, una sfumatura scura dal
+ * basso tiene leggibile il testo. Se l'immagine manca resta il colore.
+ */
+export function ImageCover({
+  src,
+  alt = '',
+  className = '',
+  position = 'center',
+  tint,
+  light = false,
+  children,
+}: {
+  src?: string;
+  alt?: string;
+  className?: string;
+  position?: string;
+  /** Colore di fondo e di velatura (per dare a ogni copertina la sua tinta). */
+  tint?: string;
+  /** Immagine chiara (carta, litografie): velatura più scura per il testo. */
+  light?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`relative isolate overflow-hidden ${className}`} style={{ background: tint ?? 'var(--c-surface2)' }}>
+      {src && (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          className="img-fade absolute inset-0 -z-10 h-full w-full object-cover"
+          style={{ objectPosition: position }}
+        />
+      )}
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: `${light
+            ? 'linear-gradient(180deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.58) 45%, rgba(0,0,0,0.9) 100%)'
+            : 'linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.32) 45%, rgba(0,0,0,0.88) 100%)'}${tint ? `, linear-gradient(135deg, ${tint}66, transparent 60%)` : ''}`,
+        }}
+      />
+      {children}
     </div>
   );
 }

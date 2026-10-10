@@ -9,10 +9,9 @@
 //  4. INSIEME, lentamente.
 // Il selettore della mano e quello della sezione non sono extra: sono il metodo.
 //
-// Le note del passo si possono suonare in qualsiasi ordine: se hai un piano
-// vero e il microfono acceso puoi arpeggiare l'accordo e vengono riconosciute
-// una alla volta. È il modo di far funzionare gli accordi con un rilevatore
-// che di per sé sente una nota sola.
+// Col piano vero e il microfono acceso, l'app sa quali note aspetta a ogni
+// passo e le cerca nello spettro (`lib/chordMatcher`): gli accordi si suonano
+// insieme, come sono scritti, anche col pedale e con la sinistra che risuona.
 //
 // Le note legate (legatura di VALORE) non vengono richieste una seconda volta:
 // il suono continua, il dito resta giù, e il passo scorre da solo. Chiederle di
@@ -36,8 +35,8 @@ import { keyInfo } from '../lib/keys';
 import { haptics } from '../lib/haptics';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
-import type { LiveNote } from '../hooks/usePitchDetection';
-import { Bar, Btn, Card, Confetti, Panel, Segmented } from './ui';
+import type { ChordMatch, LiveNote } from '../hooks/usePitchDetection';
+import { Bar, Btn, Card, Confetti, PageHeader, Panel, Segmented } from './ui';
 import type { Notify } from './ui';
 import { GrandStaff } from './GrandStaff';
 import { PianoKeyboard } from './PianoKeyboard';
@@ -56,6 +55,8 @@ interface PieceViewProps {
     isListening: boolean;
     confirmedNote: { note: LiveNote; id: number } | null;
     suppress: (ms?: number) => void;
+    expect: (notes: number[] | null, token?: string) => void;
+    chordMatch: ChordMatch | null;
   };
   notify: Notify;
   /** Dalle lezioni: il pezzo da aprire subito. */
@@ -157,7 +158,7 @@ function PieceChallenge({
   const [wrong, setWrong] = useState<{ note: string; hand: 'right' | 'left' } | null>(null);
 
   const stepErrorRef = useRef(false);
-  const micBaseRef = useRef(mic.confirmedNote?.id ?? 0);
+  const micBaseRef = useRef(mic.chordMatch?.id ?? 0);
   const savedRef = useRef(false);
 
   const rightRange = useMemo(() => rangeFor(pieceNotes(piece, 'right'), 'C4'), [piece]);
@@ -283,13 +284,9 @@ function PieceChallenge({
   }, [idx, required.length, done, step, results, goToStep, bpm]);
 
   const press = useCallback(
-    (toneNote: string, source: 'right' | 'left' | 'mic') => {
+    (toneNote: string, source: 'right' | 'left') => {
       if (done || !step) return;
-      const fromMic = source === 'mic';
-      // Dal microfono l'ottava può sfuggire: basta la nota giusta.
-      const target = fromMic
-        ? missing.find(n => midiOf(n) % 12 === midiOf(toneNote) % 12)
-        : missing.find(n => sameNote(n, toneNote));
+      const target = missing.find(n => sameNote(n, toneNote));
 
       if (!target) {
         stepErrorRef.current = true;
@@ -297,7 +294,7 @@ function PieceChallenge({
         haptics.wrong();
         // Il tasto sbagliato diventa rosso: è tutto il responso che serve
         // mentre si suona.
-        setWrong({ note: toneNote, hand: fromMic ? (hand === 'left' ? 'left' : 'right') : source });
+        setWrong({ note: toneNote, hand: source });
         const expected = missing[0];
         if (expected) {
           const delta = midiOf(toneNote) - midiOf(expected);
@@ -305,37 +302,53 @@ function PieceChallenge({
           const relation = distance === 0 ? 'nell’ottava sbagliata' : `${distance} ${distance === 1 ? 'semitono' : 'semitoni'} ${delta > 0 ? 'sopra' : 'sotto'}`;
           setFeedback(`Hai suonato ${italianOf(toneNote)}; serve ${italianOf(expected)} (${relation}).`);
         }
-        if (!fromMic) {
-          // Solo rispondendo a schermo: il verso d'errore aiuta. Suonando
-          // interromperebbe la musica, e i 700 ms di sordità che servono a non
-          // farlo rientrare nel microfono farebbero perdere la nota dopo.
-          audio.playError();
-          mic.suppress(700);
-        }
+        // Il verso d'errore aiuta, e non deve rientrare nel microfono.
+        audio.playError();
+        mic.suppress(700);
         setTimeout(() => setWrong(null), 450);
         return;
       }
 
-      if (!fromMic) {
-        audio.playNote(toneNote, 0.9);
-        mic.suppress(900);
-      }
+      audio.playNote(toneNote, 0.9);
+      mic.suppress(900);
       const nextFound = [...found, target];
       setFound(nextFound);
       setFeedback(null);
       haptics.tap();
       if (nextFound.length >= required.length) completeStep();
     },
-    [done, step, missing, found, required.length, completeStep, audio, mic, hand],
+    [done, step, missing, found, required.length, completeStep, audio, mic],
   );
 
-  // Microfono: una nota per volta, anche arpeggiando l'accordo.
+  // Microfono: l'app dice quali note aspetta, e il microfono le cerca tutte
+  // insieme. Dal microfono non arrivano errori: una nota "sentita male" non
+  // deve diventare uno sbaglio mai fatto.
+  const expect = mic.expect;
   useEffect(() => {
-    if (!mic.isListening || !mic.confirmedNote) return;
-    if (mic.confirmedNote.id <= micBaseRef.current) return;
-    micBaseRef.current = mic.confirmedNote.id;
-    press(`${mic.confirmedNote.note.name}${mic.confirmedNote.note.octave}`, 'mic');
-  }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
+    expect(mic.isListening && !done ? required.map(midiOf) : null, `${idx}-${hand}`);
+  }, [expect, mic.isListening, done, required, idx, hand]);
+  useEffect(() => () => expect(null), [expect]);
+
+  const acceptFromMic = useCallback(
+    (midis: number[]) => {
+      if (done || !step) return;
+      const targets = missing.filter(n => midis.includes(midiOf(n)));
+      if (targets.length === 0) return;
+      const nextFound = [...found, ...targets];
+      setFound(nextFound);
+      setFeedback(null);
+      haptics.tap();
+      if (nextFound.length >= required.length) completeStep();
+    },
+    [done, step, missing, found, required.length, completeStep],
+  );
+
+  useEffect(() => {
+    const m = mic.chordMatch;
+    if (!mic.isListening || !m || m.id <= micBaseRef.current) return;
+    micBaseRef.current = m.id;
+    acceptFromMic(m.midis);
+  }, [mic.chordMatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Riparte dall'inizio della sezione corrente. */
   const reset = useCallback(
@@ -649,7 +662,7 @@ function PieceChallenge({
 
       <p className="text-center text-[11px] text-ink3">
         {measures.length} battute in tutto
-        {mic.isListening && ' · 🎤 microfono attivo: negli accordi puoi arpeggiare'}
+        {mic.isListening && ' · 🎤 microfono attivo: suona gli accordi insieme, come sono scritti'}
       </p>
     </Card>
   );
@@ -674,13 +687,14 @@ export function PieceView({ progress, audio, mic, notify, section, onSection, in
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-5">
+      <PageHeader eyebrow="Repertorio" title="Canzoni" subtitle="Da Fra Martino a Chopin: ogni brano si apre nel Leggio." />
       <Segmented
         value={section}
         onChange={onSection}
         options={[
-          { value: 'melodie', label: 'Melodie' },
           { value: 'pezzi', label: 'Brani' },
+          { value: 'melodie', label: 'Melodie' },
         ]}
       />
 

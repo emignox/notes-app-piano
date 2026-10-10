@@ -15,7 +15,8 @@ import type { NoteEntry } from '../types';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { LiveNote } from '../hooks/usePitchDetection';
-import { Bar, Btn, Card, Confetti, Panel, Pill } from './ui';
+import { Bar, Btn, Card, Confetti, ImageCover, PageHeader, Panel, Section } from './ui';
+import { IMG } from '../data/images';
 import type { Notify } from './ui';
 import { Staff } from './Staff';
 import { NoteNameButtons } from './NoteNameButtons';
@@ -148,24 +149,28 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
 
   if (phase === 'setup') {
     return (
-      <div className="flex flex-col gap-3">
-        <Card className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-xl font-black text-ink">Sprint</h2>
-            <p className="mt-0.5 text-sm text-ink2">
-              Quante note leggi prima che scada il tempo? Non contare le linee: guarda e rispondi.
-            </p>
-          </div>
+      <div className="flex flex-col gap-5">
+        <PageHeader eyebrow="Lettura veloce" title="Sprint" subtitle="Quante note leggi prima che scada il tempo? Non contare le linee: guarda e rispondi." />
 
+        <ImageCover src={IMG.sprint?.src} position={IMG.sprint?.position} tint="#3b1d0f" className="flex min-h-48 flex-col justify-end rounded-[24px] p-5">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+            <Trophy className="h-3.5 w-3.5" /> Il tuo record
+          </p>
+          <p className="mt-1 text-5xl font-bold tabular-nums tracking-tight text-white">{best}</p>
+          <p className="mt-1 text-sm text-white/75">note giuste · {unlockedNotes.length} note in gioco</p>
+        </ImageCover>
+
+        <Section label="Durata">
+        <Card className="flex flex-col gap-4">
           <div className="flex gap-2">
             {DURATIONS.map(d => (
               <button
                 key={d}
                 type="button"
                 onClick={() => setDuration(d)}
-                className={`flex-1 rounded-xl border py-3 text-sm font-bold transition-all ${
+                className={`flex-1 rounded-xl border py-3 text-[15px] font-semibold tabular-nums transition-all ${
                   duration === d
-                    ? 'border-brand bg-brand/15 text-brand'
+                    ? 'border-ink bg-ink text-canvas'
                     : 'border-line bg-surface2 text-ink2'
                 }`}
               >
@@ -174,24 +179,17 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
             ))}
           </div>
 
-          <div className="flex items-center justify-between">
-            <Pill tone="warn">
-              <Trophy className="h-3 w-3" />
-              record {best}
-            </Pill>
-            <span className="text-xs text-ink3">{unlockedNotes.length} note in gioco</span>
-          </div>
-
           <Btn full onClick={start} disabled={unlockedNotes.length === 0}>
             <Play className="h-4 w-4" />
             Via!
           </Btn>
         </Card>
+        </Section>
 
-        <Panel className="px-4 py-3 text-xs leading-relaxed text-ink2">
-          Suggerimento: prima dello sprint fai una sessione normale. Lo sprint consolida ciò che sai
-          già, non serve a imparare note nuove.
-        </Panel>
+        <p className="px-1 text-[13px] leading-relaxed text-ink3">
+          Prima dello sprint fai una sessione normale: lo sprint consolida ciò che sai già, non serve a
+          imparare note nuove.
+        </p>
       </div>
     );
   }

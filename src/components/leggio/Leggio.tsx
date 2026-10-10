@@ -22,10 +22,11 @@ import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import { ChevronLeft, ChevronRight, ChevronsDown, FileMusic, Hand as HandIcon, Mic, MicOff, Minus, Pause, Play, Plus, RotateCcw, Rows2, Target, X } from 'lucide-react';
 import type { LibraryEntry } from '../../data/library';
 import { LEVEL_LABEL, composerStyle } from '../../data/library';
+import { PORTRAIT } from '../../data/images';
 import { pieceToMusicXml } from '../../lib/pieceToMusicXml';
 import type { AudioApi } from '../../hooks/useAudio';
 import type { ProgressApi } from '../../hooks/useProgress';
-import type { LiveNote } from '../../hooks/usePitchDetection';
+import type { ChordMatch } from '../../hooks/usePitchDetection';
 import { haptics } from '../../lib/haptics';
 import { Cascade } from './Cascade';
 import type { FallingNote } from './Cascade';
@@ -34,7 +35,8 @@ import { BAD_COLOR, GOOD_COLOR, HAND_COLOR, midiName, midiTone, whiteKeysFor, wi
 
 interface MicApi {
   isListening: boolean;
-  confirmedNote: { note: LiveNote; id: number } | null;
+  expect: (notes: number[] | null, token?: string) => void;
+  chordMatch: ChordMatch | null;
   suppress: (ms?: number) => void;
 }
 
@@ -204,9 +206,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const play = useRef({ start: 0, t0: 0, spb: 0.5 });
   const shownBeat = useRef(0);
   const practice = useRef({ errors: 0, total: 0, stepError: false, startedAt: 0 });
-  const micBase = useRef(mic.confirmedNote?.id ?? 0);
+  const micBase = useRef(mic.chordMatch?.id ?? 0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const accomp = useRef({ until: 0, classes: new Set<number>() });
 
   const spb = 60 / (entry.bpm * rate);
 
@@ -388,18 +389,12 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       for (let i = from; i < to && i < steps.length; i++) {
         for (const n of steps[i].notes) {
           if (n.cont || allows(hand, n.staff)) continue;
-          events.push({ notes: [midiTone(n.midi)], midi: n.midi, at: Math.max(0, (n.start - t0) * spb), hold: Math.max(0.06, n.dur * spb * 0.95), velocity: 0.42, stepIndex: i });
+          events.push({ notes: [midiTone(n.midi)], at: Math.max(0, (n.start - t0) * spb), hold: Math.max(0.06, n.dur * spb * 0.95), velocity: 0.42, stepIndex: i });
         }
       }
-      if (!events.length) return;
-      // Il microfono sente anche l'altoparlante: finché suona l'accompagnamento,
-      // le sue note non contano come errori (le tue note giuste sì).
-      const end = Math.max(...events.map(e => e.at + e.hold));
-      accomp.current = {
-        until: performance.now() + (end + 0.4) * 1000,
-        classes: new Set(events.map(e => ((e.midi % 12) + 12) % 12)),
-      };
-      audio.playPerformance(events, []);
+      // Il microfono sente anche l'altoparlante, ma cerca solo le note della
+      // tua mano: quelle dell'accompagnamento non le aspetta.
+      if (events.length) audio.playPerformance(events, []);
     },
     [hand, steps, spb, audio],
   );
@@ -424,11 +419,26 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     setIdx(next);
   }, [idx, nextRequired, accompany, range, audio, progress, entry.id]);
 
-  const input = useCallback(
-    (midi: number, fromMic = false) => {
+  /** Note giuste arrivate dal microfono, anche più insieme (un accordo). */
+  const accept = useCallback(
+    (midis: number[]) => {
       if (mode !== 'practice') return;
       const need = required(idx);
-      if (fromMic && !need.includes(midi) && performance.now() < accomp.current.until && accomp.current.classes.has(((midi % 12) + 12) % 12)) return;
+      const fresh = midis.filter(m => need.includes(m) && !found.includes(m));
+      if (fresh.length === 0) return;
+      const now = [...found, ...fresh];
+      setFound(now);
+      haptics.correct();
+      if (need.every(m => now.includes(m))) completeStep();
+    },
+    [mode, required, idx, found, completeStep],
+  );
+
+  /** Un tasto toccato sullo schermo: giusto, o sbagliato (rosso). */
+  const input = useCallback(
+    (midi: number) => {
+      if (mode !== 'practice') return;
+      const need = required(idx);
       if (need.includes(midi)) {
         if (found.includes(midi)) return;
         const now = [...found, midi];
@@ -455,15 +465,21 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     [audio, mic, input],
   );
 
-  // Il piano vero, col microfono.
+  // Il piano vero, col microfono: l'app dice quali note aspetta, e il
+  // microfono le cerca tutte insieme (accordi compresi). Dal microfono non
+  // arrivano errori: una nota sentita male non deve diventare uno sbaglio.
+  const expect = mic.expect;
   useEffect(() => {
-    if (!mic.isListening || !mic.confirmedNote) return;
-    if (mic.confirmedNote.id <= micBase.current) return;
-    micBase.current = mic.confirmedNote.id;
-    const n = mic.confirmedNote.note;
-    const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    input((n.octave + 1) * 12 + names.indexOf(n.name), true);
-  }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
+    expect(mode === 'practice' && mic.isListening ? required(idx) : null, `${idx}`);
+  }, [expect, mode, mic.isListening, required, idx]);
+  useEffect(() => () => expect(null), [expect]);
+
+  useEffect(() => {
+    const m = mic.chordMatch;
+    if (!mic.isListening || !m || m.id <= micBase.current) return;
+    micBase.current = m.id;
+    accept(m.midis);
+  }, [mic.chordMatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Note accese sul rigo e scorrimento ────────────────────────────────────
   useEffect(() => {
@@ -627,8 +643,16 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         <button type="button" onClick={() => { stopAll(); onClose(); }} className="rounded-xl bg-surface2 p-2 text-ink2 active:scale-95" aria-label="Chiudi il leggio">
           <X className="h-5 w-5" />
         </button>
+        {PORTRAIT[entry.composer] && (
+          <img
+            src={PORTRAIT[entry.composer]?.src}
+            alt=""
+            className="hidden h-9 w-9 flex-none rounded-full object-cover ring-1 ring-white/15 min-[400px]:block"
+            style={{ objectPosition: PORTRAIT[entry.composer]?.position }}
+          />
+        )}
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-sm font-black sm:text-base">{entry.title}</p>
+          <p className="truncate text-sm font-bold tracking-tight sm:text-base">{entry.title}</p>
           <p className="truncate text-[11px] text-ink3 sm:text-xs">
             <span className="hidden sm:inline">{entry.composer} · {LEVEL_LABEL[entry.level]} · </span>
             <span className="sm:hidden">{style.short} · </span>

@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Check, ChevronLeft, ChevronRight, Music, RotateCcw, Volume2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Music, RotateCcw, Volume2 } from 'lucide-react';
 import type { Exercise, Lesson, Module } from '../data/lessons';
 import { allLessons, modules } from '../data/lessons';
 import type { AudioApi } from '../hooks/useAudio';
@@ -33,7 +33,8 @@ import { keyInfo, signatureText, diatonicChords } from '../lib/keys';
 import { METERS, VALUES, valueById, dotted } from '../lib/rhythm';
 import { diatonicOf, englishOf, isOnLine, italianOf, landmarkHint, midiOf, noteEntry, parseNote, samePitchClass } from '../lib/notes';
 import { haptics } from '../lib/haptics';
-import { Bar, Btn, Card, Panel, Pill, Segmented, SectionTitle } from './ui';
+import { Bar, Btn, Card, ImageCover, PageHeader, Panel, Pill, Segmented, SectionTitle, Section as UiSection } from './ui';
+import { IMG } from '../data/images';
 import { useScrollTop } from '../hooks/useScrollTop';
 import type { Notify } from './ui';
 import type { Intent, Navigate } from './Shell';
@@ -962,72 +963,100 @@ function TheoryReview({
 
 // ── Elenco moduli ───────────────────────────────────────────────────────────
 
+/** Tinta di ogni modulo: colora la copertina sotto la foto. */
+const MODULE_TINT: Record<string, string> = {
+  lettura: '#1e3a8a',
+  scale: '#065f46',
+  ritmo: '#7c2d12',
+  espressione: '#831843',
+  'tecnica-base': '#3f3f46',
+  accordi: '#4c1d95',
+  'verso-chopin': '#312e81',
+};
+
 function ModuleCard({
   mod,
+  index,
   done,
+  open,
+  onToggle,
   onOpen,
 }: {
   mod: Module;
+  index: number;
   done: string[];
+  open: boolean;
+  onToggle: () => void;
   onOpen: (l: Lesson) => void;
 }) {
   const completed = mod.lessons.filter(l => done.includes(l.id)).length;
+  const minutes = mod.lessons.reduce((m, l) => m + l.minutes, 0);
+  const img = IMG[`module:${mod.id}`];
   return (
-    <Card>
-      <div className="flex items-start gap-3">
-        <span className="text-3xl">{mod.emoji}</span>
-        <div className="min-w-0 flex-1">
-          <p className="font-bold text-ink">{mod.title}</p>
-          <p className="text-xs leading-snug text-ink2">{mod.summary}</p>
-          <div className="mt-1.5 flex items-center gap-2">
-            <Bar pct={completed / mod.lessons.length} className="flex-1" />
-            <span className="text-[11px] tabular-nums text-ink3">
-              {completed}/{mod.lessons.length}
-            </span>
+    <section className="overflow-hidden rounded-[22px] border border-line bg-surface">
+      <button type="button" onClick={onToggle} aria-expanded={open} className="block w-full text-left">
+        <ImageCover src={img?.src} position={img?.position} light={img?.light} tint={MODULE_TINT[mod.id]} className="flex min-h-36 flex-col justify-end p-4 sm:min-h-40">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/65">
+                Modulo {index + 1} · {mod.lessons.length} lezioni · {minutes}′
+              </p>
+              <h3 className="mt-1 text-[22px] font-bold leading-tight tracking-tight text-white">{mod.title}</h3>
+            </div>
+            <ChevronDown className={`mb-1 h-5 w-5 flex-shrink-0 text-white/80 transition-transform ${open ? 'rotate-180' : ''}`} />
           </div>
-        </div>
-      </div>
+          <div className="mt-3 flex items-center gap-2.5">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/20">
+              <div className="h-full rounded-full bg-white transition-[width] duration-500" style={{ width: `${(completed / mod.lessons.length) * 100}%` }} />
+            </div>
+            <span className="text-[11px] font-medium tabular-nums text-white/80">{completed}/{mod.lessons.length}</span>
+          </div>
+        </ImageCover>
+      </button>
 
-      <div className="mt-3 space-y-2">
-        {mod.lessons.map((l, i) => {
-          const isDone = done.includes(l.id);
-          // La prima non fatta è quella consigliata: il percorso ha un ordine e
-          // conviene dirlo, invece di lasciare scegliere a caso.
-          const isNext = !isDone && mod.lessons.slice(0, i).every(p => done.includes(p.id));
-          return (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => onOpen(l)}
-              className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left active:scale-[0.99] ${
-                isNext ? 'border-brand bg-brand/10' : 'border-line bg-surface'
-              }`}
-            >
-              <span
-                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                  isDone ? 'bg-emerald-500 text-white' : 'bg-surface2 text-ink3'
-                }`}
-              >
-                {isDone ? <Check className="h-4 w-4" /> : i + 1}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-sm font-bold text-ink">{l.title}</span>
-                  {isNext && <Pill tone="brand">da qui</Pill>}
-                </span>
-                <span className="block text-xs leading-snug text-ink3">{l.goal}</span>
-                {l.prereq && !isDone && (
-                  <span className="mt-0.5 block text-[11px] leading-snug text-ink3">
-                    prima serve: {l.prereq}
+      {open && (
+        <>
+          <p className="border-b border-line px-4 py-3 text-[13px] leading-snug text-ink2">{mod.summary}</p>
+          <div className="divide-y divide-line">
+            {mod.lessons.map((l, i) => {
+              const isDone = done.includes(l.id);
+              // La prima non fatta è quella consigliata: il percorso ha un ordine e
+              // conviene dirlo, invece di lasciare scegliere a caso.
+              const isNext = !isDone && mod.lessons.slice(0, i).every(p => done.includes(p.id));
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => onOpen(l)}
+                  className={`flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors active:bg-surface2 ${isNext ? 'bg-brand/[0.06]' : ''}`}
+                >
+                  <span
+                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
+                      isDone ? 'bg-emerald-500/15 text-emerald-400' : isNext ? 'bg-brand text-white' : 'bg-surface2 text-ink3'
+                    }`}
+                  >
+                    {isDone ? <Check className="h-4 w-4" strokeWidth={2.5} /> : i + 1}
                   </span>
-                )}
-              </span>
-              <span className="flex-shrink-0 text-[11px] text-ink3">{l.minutes}′</span>
-            </button>
-          );
-        })}
-      </div>
-    </Card>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className={`text-[15px] font-semibold tracking-tight ${isDone ? 'text-ink3' : 'text-ink'}`}>{l.title}</span>
+                      {isNext && <Pill tone="brand">da qui</Pill>}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] leading-snug text-ink3">{l.goal}</span>
+                    {l.prereq && !isDone && (
+                      <span className="mt-0.5 block text-[11px] leading-snug text-ink3/80">
+                        prima serve: {l.prereq}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex-shrink-0 text-[11px] tabular-nums text-ink3">{l.minutes}′</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -1040,6 +1069,10 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
 
   const done = progress.data.lessonsDone;
   const totalLessons = modules.reduce((n, m) => n + m.lessons.length, 0);
+  // Aperto solo il modulo dove sei arrivato: gli altri restano copertine.
+  const [openModule, setOpenModule] = useState<string | null>(
+    () => modules.find(m => m.lessons.some(l => !progress.data.lessonsDone.includes(l.id)))?.id ?? null,
+  );
   const due = progress.theoryDue;
 
   if (reviewIds && reviewIds.length > 0) {
@@ -1069,7 +1102,12 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        eyebrow="Teoria, tecnica, orecchio"
+        title="Studio"
+        subtitle={section === 'lezioni' ? `${done.length} di ${totalLessons} lezioni completate` : undefined}
+      />
       <Segmented
         value={section}
         onChange={setSection}
@@ -1084,33 +1122,33 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
 
       {section === 'lezioni' && (
         <>
-          <Card>
-            <div className="flex items-center gap-3">
-              <BookOpen className="h-5 w-5 flex-shrink-0 text-brand" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-ink">Teoria, dal perché</p>
-                <p className="text-xs text-ink2">
-                  Ogni lezione spiega, mostra sul pentagramma e sulla tastiera, fa sentire il suono e poi ti fa provare.
-                </p>
-              </div>
-              <Pill tone="brand">{done.length}/{totalLessons}</Pill>
-            </div>
-          </Card>
           {due.length > 0 && (
-            <Card className="border-amber-500/40">
-              <div className="flex items-center gap-3">
-                <RotateCcw className="h-5 w-5 flex-shrink-0 text-amber-500" />
+            <UiSection label="Da ripassare">
+              <Card className="flex items-center gap-3">
+                <RotateCcw className="h-5 w-5 flex-shrink-0 text-amber-400" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-ink">Ripasso: {due.length} {due.length === 1 ? 'esercizio' : 'esercizi'}</p>
-                  <p className="text-xs text-ink2">Quelli sbagliati nelle lezioni tornano finché non li sai al primo colpo.</p>
+                  <p className="text-[15px] font-semibold text-ink">{due.length} {due.length === 1 ? 'esercizio' : 'esercizi'}</p>
+                  <p className="text-[13px] text-ink3">Quelli sbagliati tornano finché non li sai al primo colpo.</p>
                 </div>
-              </div>
-              <Btn full className="mt-3" onClick={() => setReviewIds(due)}>Ripassa ora</Btn>
-            </Card>
+                <Btn onClick={() => setReviewIds(due)}>Ripassa</Btn>
+              </Card>
+            </UiSection>
           )}
-          {modules.map(m => (
-            <ModuleCard key={m.id} mod={m} done={done} onOpen={setLesson} />
-          ))}
+          <UiSection label="Il percorso">
+            <div className="flex flex-col gap-3">
+              {modules.map((m, i) => (
+                <ModuleCard
+                  key={m.id}
+                  mod={m}
+                  index={i}
+                  done={done}
+                  open={openModule === m.id}
+                  onToggle={() => setOpenModule(o => (o === m.id ? null : m.id))}
+                  onOpen={setLesson}
+                />
+              ))}
+            </div>
+          </UiSection>
         </>
       )}
 

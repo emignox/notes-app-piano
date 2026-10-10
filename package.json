@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check:pezzi": "node scripts/check-pieces.mjs",
-    "bench:mic": "node scripts/bench-mic.mjs"
+    "bench:mic": "node scripts/bench-mic.mjs",
+    "bench:pezzi": "node scripts/bench-pieces.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.14.0",

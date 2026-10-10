@@ -16,7 +16,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { BookOpen, Check, ChevronRight, Eye, Music, Play, Sparkles, Target, Timer, Unlock } from 'lucide-react';
+import { BookOpen, Check, ChevronRight, Eye, Music, Play, Target, Timer, Unlock } from 'lucide-react';
 import type { NoteEntry } from '../types';
 import type { Question } from '../lib/session';
 import { buildSession, weakestNotes } from '../lib/session';
@@ -31,7 +31,8 @@ import { KIND_LABEL, confusionPartner, diagnose, topConfusions } from '../lib/di
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
-import { Btn, Card, Panel, Pill } from './ui';
+import { Btn, Card, ImageCover, PageHeader, Panel, Pill, Section } from './ui';
+import { IMG } from '../data/images';
 import type { Notify } from './ui';
 import type { Intent, Navigate } from './Shell';
 import { NoteIntro } from './NoteIntro';
@@ -89,35 +90,39 @@ function PlanRow({ step, n, isNext, onRun }: { step: PlanStep; n: number; isNext
     <button
       type="button"
       onClick={() => onRun(step.action)}
-      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors active:scale-[0.99] ${
-        step.done
-          ? 'border-emerald-500/40 bg-emerald-500/10'
-          : isNext
-            ? 'border-brand bg-brand/10'
-            : 'border-line bg-surface/70 hover:border-brand/50'
-      }`}
+      className={`flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors active:bg-surface2 ${isNext && !step.done ? 'bg-brand/[0.06]' : ''}`}
     >
       <span
-        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-black ${
-          step.done ? 'bg-emerald-500 text-white' : isNext ? 'bg-brand text-white' : 'bg-surface2 text-ink3'
+        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${
+          step.done ? 'bg-emerald-500/15 text-emerald-400' : isNext ? 'bg-brand text-white' : 'bg-surface2 text-ink3'
         }`}
       >
-        {step.done ? <Check className="h-4 w-4" /> : n}
+        {step.done ? <Check className="h-4 w-4" strokeWidth={2.5} /> : <Icon className="h-4 w-4" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 text-sm font-bold text-ink">
-          <Icon className="h-3.5 w-3.5 flex-shrink-0 text-ink3" />
+        <span className={`flex items-center gap-2 text-[15px] font-semibold tracking-tight ${step.done ? 'text-ink3' : 'text-ink'}`}>
+          <span className="text-[11px] font-medium tabular-nums text-ink3">{n}</span>
           <span className="truncate">{step.title}</span>
         </span>
-        <span className="mt-0.5 block text-xs leading-snug text-ink3">{step.detail}</span>
+        <span className="mt-0.5 block text-[13px] leading-snug text-ink3">{step.detail}</span>
       </span>
-      {isNext && !step.done && <ChevronRight className="h-4 w-4 flex-shrink-0 text-brand" />}
+      <ChevronRight className={`h-4 w-4 flex-shrink-0 ${isNext && !step.done ? 'text-brand' : 'text-ink3/60'}`} />
     </button>
   );
 }
 
+/** Saluto e data di oggi, per il titolo della pagina. */
+function todayTitle(): { greeting: string; date: string } {
+  const now = new Date();
+  const h = now.getHours();
+  const greeting = h < 5 ? 'Buonanotte' : h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera';
+  const date = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  return { greeting, date };
+}
+
 export function PracticeView({ progress, audio, mic, notify, onNavigate }: PracticeViewProps) {
   const { data, settings, unlockedNotes, newestNote, streak } = progress;
+  const [title] = useState(todayTitle);
 
   const needsIntro = !!newestNote && !data.introSeen.includes(newestNote.id);
   const [phase, setPhase] = useState<Phase>(needsIntro ? 'intro' : 'start');
@@ -441,40 +446,57 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
   const nextIdx = plan.findIndex(s => !s.done);
   const allDone = nextIdx < 0;
 
+  const next = allDone ? null : plan[nextIdx];
+  const doneCount = plan.filter(p => p.done).length;
+
   return (
-    <div className="flex flex-col gap-3">
-      <Card className="relative overflow-hidden border-brand/30 bg-gradient-to-br from-brand/20 via-surface to-surface">
-        <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-brand2/20 blur-2xl" />
-        <div className="relative">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Il tuo studio di oggi</p>
-              <h1 className="mt-1 text-2xl font-black text-ink">
-                {allDone ? 'Fatto, per oggi.' : 'Poco, bene, ogni giorno.'}
-              </h1>
-              <p className="mt-1 text-sm text-ink2">
-                {allDone
-                  ? 'Tutto il piano è completo. Se hai ancora voglia, una canzone o uno sprint.'
-                  : 'Un passo alla volta: il prossimo è già scelto.'}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-2xl font-black tabular-nums text-ink">{progress.todayMinutes}</p>
-              <p className="text-[10px] uppercase tracking-wide text-ink3">minuti</p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-col gap-2">
-            {plan.map((step, i) => (
-              <PlanRow key={step.key} step={step} n={i + 1} isNext={i === nextIdx} onRun={runStep} />
-            ))}
+    <div className="flex flex-col gap-7">
+      <PageHeader eyebrow={title.date} title={title.greeting} />
+
+      {/* Il prossimo passo, in grande: si comincia con un tocco. */}
+      <ImageCover
+        src={IMG.hero?.src}
+        position={IMG.hero?.position}
+        tint="#1b1a3a"
+        className="flex min-h-72 flex-col justify-end rounded-[24px] p-5 sm:min-h-80"
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+          {allDone ? 'Piano completato' : `Prossimo · ${nextIdx + 1} di ${plan.length}`}
+        </p>
+        <p className="mt-1 text-[26px] font-bold leading-tight tracking-tight text-white">
+          {allDone ? 'Fatto, per oggi.' : next?.title}
+        </p>
+        <p className="mt-1 max-w-md text-sm leading-snug text-white/75">
+          {allDone ? 'Se hai ancora voglia: un brano nel Leggio o uno sprint.' : next?.detail}
+        </p>
+        <div className="mt-4 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => (next ? runStep(next.action) : onNavigate('melody', { pieces: true }))}
+            className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[15px] font-semibold text-black active:scale-[0.97]"
+          >
+            <Play className="h-4 w-4 fill-black" /> {allDone ? 'Apri i brani' : 'Continua'}
+          </button>
+          <div className="text-white/80">
+            <span className="text-lg font-semibold tabular-nums text-white">{progress.todayMinutes}</span>
+            <span className="ml-1 text-xs">min oggi</span>
           </div>
         </div>
-      </Card>
+      </ImageCover>
 
+      <Section label="Il piano di oggi" action={<span className="text-xs font-medium tabular-nums text-ink3">{doneCount}/{plan.length}</span>}>
+        <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface">
+          {plan.map((step, i) => (
+            <PlanRow key={step.key} step={step} n={i + 1} isNext={i === nextIdx} onRun={runStep} />
+          ))}
+        </div>
+      </Section>
+
+      <Section label="Lettura delle note">
       <Card className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-ink">Sessione di lettura</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-ink">Sessione di lettura</h2>
             <p className="mt-0.5 text-sm text-ink2">
               {unlockedNotes.length} note nel tuo repertorio
             </p>
@@ -508,11 +530,12 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
           </Btn>
         )}
       </Card>
+      </Section>
 
       {confusions.length > 0 && (
+        <Section label="Le note che confondi">
         <Card>
-          <p className="text-xs font-bold uppercase tracking-wide text-ink3">Le note che confondi</p>
-          <div className="mt-2 space-y-1.5">
+          <div className="space-y-1.5">
             {confusions.map(c => (
               <p key={`${c.note.id}>${c.given}`} className="text-sm text-ink2">
                 <span className="font-bold text-ink">
@@ -532,18 +555,17 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
             Allenale insieme
           </Btn>
         </Card>
+        </Section>
       )}
 
       {isFirstEver && (
+        <Section label="Come funziona">
         <Panel className="space-y-2 px-4 py-3 text-sm leading-relaxed text-ink2">
-          <p className="flex items-center gap-2 font-bold text-ink">
-            <Sparkles className="h-4 w-4 text-brand" />
-            Come funziona
-          </p>
           <p>1. Una nota alla volta: si sblocca la successiva solo quando la precedente ti viene automatica.</p>
           <p>2. Le note tornano quando stai per dimenticarle — non a caso: è ripetizione spaziata.</p>
           <p>3. Se hai un piano vero, tocca 🎤 in alto e rispondi suonando: è il modo più efficace.</p>
         </Panel>
+        </Section>
       )}
     </div>
   );

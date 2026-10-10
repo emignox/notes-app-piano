@@ -10,7 +10,8 @@ import type { LiveNote } from '../hooks/usePitchDetection';
 import type { Settings } from '../lib/storage';
 import { exportState, importState } from '../lib/storage';
 import type { ProgressApi } from '../hooks/useProgress';
-import { Bar, Btn, Card, Panel, Pill, SectionTitle } from './ui';
+import { Bar, Btn, Card, PageHeader, Panel, Pill, SectionTitle } from './ui';
+import { IMAGE_CREDITS } from '../data/images';
 
 interface SettingsViewProps {
   progress: ProgressApi;
@@ -197,7 +198,8 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Opzioni" />
       <Card>
         <SectionTitle>Studio</SectionTitle>
         <Row
@@ -358,6 +360,32 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
         Il progresso resta su questo dispositivo (nessun account, nessun server). Usa Esporta prima di
         cambiare telefono o cancellare i dati del browser.
       </Panel>
+
+      <Card>
+        <SectionTitle>Crediti</SectionTitle>
+        <div className="space-y-2 px-1 text-[12px] leading-relaxed text-ink3">
+          <p>
+            Partiture complete di Bach, Beethoven, Mozart, Schubert, Schumann e Chopin (op. 10 n. 3, Marcia
+            funebre): dataset ASAP, Foscarin et al., licenza CC BY-NC-SA 4.0.
+          </p>
+          <p>Suono del pianoforte: Salamander Grand Piano.</p>
+          {IMAGE_CREDITS.length > 0 && (
+            <div>
+              <p>Immagini (Wikimedia Commons, pubblico dominio o CC0):</p>
+              <ul className="mt-1 space-y-0.5">
+                {IMAGE_CREDITS.map(c => (
+                  <li key={c.url}>
+                    <a href={c.url} target="_blank" rel="noreferrer" className="underline decoration-line underline-offset-2 hover:text-ink2">
+                      {c.what}
+                    </a>{' '}
+                    — {c.author} · {c.license}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }

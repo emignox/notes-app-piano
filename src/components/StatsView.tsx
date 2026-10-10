@@ -15,7 +15,7 @@ import { KIND_ADVICE, KIND_LABEL, diagnose, topConfusions } from '../lib/diagnos
 import { levelTitle } from '../lib/xp';
 import { shiftDay, todayKey } from '../lib/storage';
 import type { ProgressApi } from '../hooks/useProgress';
-import { Bar, Card, Panel, Pill, Ring, SectionTitle } from './ui';
+import { Bar, Card, PageHeader, Panel, Pill, Ring, SectionTitle } from './ui';
 
 interface StatsViewProps {
   progress: ProgressApi;
@@ -73,7 +73,8 @@ export function StatsView({ progress }: StatsViewProps) {
   const unlockedAch = allAchievements.filter(a => data.achievements.includes(a.id));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      <PageHeader eyebrow="Il tuo percorso" title="Progressi" />
       {/* Livello e obiettivo del giorno */}
       <Card className="flex items-center gap-4">
         <Ring pct={level.pct} size={64} stroke={6}>
