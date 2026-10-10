@@ -3,7 +3,7 @@
 // interruttore esiste fa parte dell'imparare.
 
 import { useRef, useState } from 'react';
-import { Download, Mic, MicOff, Moon, RotateCcw, Sun, Upload, Volume2 } from 'lucide-react';
+import { Download, Mic, MicOff, Moon, RotateCcw, Share2, Sun, Upload, Volume2 } from 'lucide-react';
 import type { NameStyle } from '../lib/notes';
 import { italianOf } from '../lib/notes';
 import type { LiveNote } from '../hooks/usePitchDetection';
@@ -12,6 +12,8 @@ import { exportState, importState } from '../lib/storage';
 import type { ProgressApi } from '../hooks/useProgress';
 import { Bar, Btn, Card, PageHeader, Panel, Pill, SectionTitle } from './ui';
 import { IMAGE_CREDITS } from '../data/images';
+import type { MicRecording, MicStats } from '../lib/micRecorder';
+import { recordMic } from '../lib/micRecorder';
 
 interface SettingsViewProps {
   progress: ProgressApi;
@@ -31,8 +33,8 @@ function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggl
       <SectionTitle>Microfono</SectionTitle>
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs leading-relaxed text-ink3">
-          Con il microfono rispondi suonando sul piano vero, in tutti gli esercizi. Funziona una nota alla volta:
-          gli accordi si arpeggiano.
+          Con il microfono rispondi suonando sul piano vero, in tutti gli esercizi. Nelle letture una nota alla
+          volta; nei brani anche gli accordi, suonati insieme.
         </p>
         <Pill tone={mic.isListening ? (strong ? 'good' : 'warn') : 'neutral'}>
           {mic.isListening ? (strong ? 'segnale pronto' : 'suona una nota') : 'spento'}
@@ -57,6 +59,88 @@ function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggl
         {mic.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         {mic.isListening ? 'Spegni il microfono' : 'Accendi e prova'}
       </Btn>
+    </Card>
+  );
+}
+
+/**
+ * Registrazione di prova: 20 secondi di suono grezzo dal microfono, con i
+ * livelli misurati subito e un WAV da mandare (AirDrop, File) per tarare il
+ * riconoscimento sul pianoforte vero.
+ */
+function MicDiagnosis({ micOn }: { micOn: boolean }) {
+  const [state, setState] = useState<'idle' | 'recording' | 'done' | 'error'>('idle');
+  const [elapsed, setElapsed] = useState(0);
+  const [level, setLevel] = useState(0);
+  const [rec, setRec] = useState<MicRecording | null>(null);
+  const SECONDS = 20;
+
+  const start = async () => {
+    setState('recording');
+    setRec(null);
+    try {
+      const r = await recordMic(SECONDS, (t, l) => { setElapsed(t); setLevel(l); }, micOn);
+      setRec(r);
+      setState('done');
+    } catch {
+      setState('error');
+    }
+  };
+
+  const summary = (st: MicStats) =>
+    `Rumore di fondo ${st.noiseDb} dB · colpi da ${st.hitsDb[0] ?? '–'} a ${st.hitsDb[st.hitsDb.length - 1] ?? '–'} dB (${st.hitsDb.length}) · picco ${st.peakDb} dB${st.clipped ? ' (saturato)' : ''} · ${st.sampleRate} Hz · ${st.applied}`;
+
+  const share = async () => {
+    if (!rec) return;
+    const name = `prova-microfono-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.wav`;
+    const file = new File([rec.blob], name, { type: 'audio/wav' });
+    const text = summary(rec.stats);
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Prova del microfono', text });
+        return;
+      }
+    } catch {
+      /* condivisione annullata: si scarica */
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  };
+
+  return (
+    <Card>
+      <SectionTitle hint="per tarare il riconoscimento sul tuo pianoforte">Registra una prova</SectionTitle>
+      <p className="px-1 text-xs leading-relaxed text-ink3">
+        Premi Registra, resta in silenzio 3 secondi, poi suona: cinque note piano, cinque note forti, tre accordi e
+        una scala veloce. Dura {SECONDS} secondi. Poi manda il file: dentro c'è solo il suono, e resta sul tuo
+        dispositivo finché non lo condividi tu.
+      </p>
+      {state === 'recording' && (
+        <div className="mt-3 space-y-1.5">
+          <Bar pct={elapsed / SECONDS} />
+          <div className="flex items-center justify-between text-xs text-ink2">
+            <span>{elapsed < 3 ? 'Silenzio…' : 'Suona!'}</span>
+            <span className="tabular-nums">{Math.max(0, Math.ceil(SECONDS - elapsed))} s · livello {Math.round(level * 100)}%</span>
+          </div>
+        </div>
+      )}
+      {state === 'done' && rec && (
+        <p className="mt-3 rounded-xl bg-surface2 px-3 py-2 text-[12px] leading-relaxed text-ink2">{summary(rec.stats)}</p>
+      )}
+      {state === 'error' && <p className="mt-3 text-xs text-red-400">Non riesco ad aprire il microfono: controlla il permesso.</p>}
+      <div className="mt-3 flex gap-2">
+        <Btn variant={state === 'done' ? 'soft' : 'primary'} full onClick={start} disabled={state === 'recording'}>
+          <Mic className="h-4 w-4" /> {state === 'done' ? 'Registra di nuovo' : 'Registra'}
+        </Btn>
+        {state === 'done' && rec && (
+          <Btn full onClick={share}>
+            <Share2 className="h-4 w-4" /> Manda il file
+          </Btn>
+        )}
+      </div>
     </Card>
   );
 }
@@ -284,6 +368,7 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
       </Card>
 
       <MicCheck mic={mic} onToggleMic={onToggleMic} />
+      <MicDiagnosis micOn={mic.isListening} />
 
       <Card>
         <SectionTitle>Suono e vibrazione</SectionTitle>
