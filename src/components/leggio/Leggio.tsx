@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
-import { ChevronLeft, ChevronRight, ChevronsDown, FileMusic, Hand as HandIcon, Mic, MicOff, Minus, Pause, Play, Plus, RotateCcw, Rows2, Target, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsDown, FileMusic, Hand as HandIcon, Mic, MicOff, Minus, Pause, Play, Plus, Repeat, RotateCcw, Rows2, Target, X } from 'lucide-react';
 import type { LibraryEntry } from '../../data/library';
 import { LEVEL_LABEL, composerStyle } from '../../data/library';
 import { PORTRAIT } from '../../data/images';
@@ -190,7 +190,17 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [idx, setIdx] = useState(0);
-  const [loop, setLoop] = useState<number | null>(null);
+  /** La zona da ripetere (battute, estremi compresi), o null: tutto il brano. */
+  const [zone, setZone] = useState<{ from: number; to: number } | null>(null);
+  /** Scelta della zona sul rigo: si tocca la prima battuta, poi l'ultima. */
+  const [picking, setPicking] = useState<null | { from: number | null }>(null);
+  /** Dove stanno le battute sul rigo (px nello spartito), per i tocchi e la zona colorata. */
+  const [measureBoxes, setMeasureBoxes] = useState<{ x: number; w: number }[]>([]);
+  /** Il numero stampato di ogni battuta (la battuta in levare è la 0). */
+  const [measureNumbers, setMeasureNumbers] = useState<number[]>([]);
+  /** Giro della zona in Esercita, e com'è andato quello appena finito. */
+  const [lap, setLap] = useState(1);
+  const [lapNote, setLapNote] = useState<string | null>(null);
   const [found, setFound] = useState<number[]>([]);
   const [badKey, setBadKey] = useState<number | null>(null);
   const [result, setResult] = useState<{ pct: number; secs: number; notes: number } | null>(null);
@@ -242,6 +252,23 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     const lines = (osmd.GraphicSheet as unknown as { MusicPages: { MusicSystems: { StaffLines: { PositionAndShape: { AbsolutePosition: { y: number } } }[] }[] }[] })
       .MusicPages[0]?.MusicSystems[0]?.StaffLines ?? [];
     setStaffTops(lines.map(l => ({ top: l.PositionAndShape.AbsolutePosition.y * 10 * osmd.zoom, height: 40 * osmd.zoom })));
+    // Le battute sul rigo: da unità di OSMD a pixel, più lo spostamento
+    // dell'SVG dentro lo spartito (il margine a sinistra).
+    const svg = host.current?.querySelector('svg');
+    const layer = spotLayer.current;
+    if (svg && layer) {
+      const off = svg.getBoundingClientRect().left - layer.getBoundingClientRect().left;
+      type Box = { PositionAndShape: { AbsolutePosition: { x: number }; Size: { width: number } } } | undefined;
+      const list = (osmd.GraphicSheet as unknown as { MeasureList: Box[][] }).MeasureList ?? [];
+      const sources = (osmd.Sheet as unknown as { SourceMeasures: { MeasureNumber: number }[] }).SourceMeasures ?? [];
+      setMeasureNumbers(sources.map(m => m.MeasureNumber));
+      setMeasureBoxes(list.map(staves => {
+        const m = staves.find(Boolean);
+        return m
+          ? { x: off + m.PositionAndShape.AbsolutePosition.x * 10 * osmd.zoom, w: m.PositionAndShape.Size.width * 10 * osmd.zoom }
+          : { x: 0, w: 0 };
+      }));
+    }
   }, []);
 
   useEffect(() => {
@@ -308,22 +335,33 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
 
   // ── Battute e anelli di ripetizione ───────────────────────────────────────
   const measureCount = useMemo(() => steps.reduce((m, s) => Math.max(m, s.measure + 1), 0), [steps]);
+  /** Il numero da mostrare per la battuta `mi`: quello stampato sul rigo. */
+  const num = useCallback((mi: number) => measureNumbers[mi] ?? mi + 1, [measureNumbers]);
   const loops = useMemo(() => {
     const out: { label: string; from: number; to: number }[] = [];
-    for (let m = 0; m < measureCount; m += 4) out.push({ label: `${m + 1}–${Math.min(measureCount, m + 4)}`, from: m, to: Math.min(measureCount - 1, m + 3) });
+    for (let m = 0; m < measureCount; m += 4) {
+      const to = Math.min(measureCount - 1, m + 3);
+      out.push({ label: `${num(m)}–${num(to)}`, from: m, to });
+    }
     return out;
-  }, [measureCount]);
+  }, [measureCount, num]);
 
-  /** Il tratto di passi da suonare: il brano intero o il gruppo di battute scelto. */
+  /** Il tratto di passi da suonare: il brano intero o la zona scelta. */
   const range = useMemo((): [number, number] => {
-    if (loop === null || !loops[loop]) return [0, steps.length];
-    const { from, to } = loops[loop];
+    if (!zone) return [0, steps.length];
+    const { from, to } = zone;
     const a = steps.findIndex(s => s.measure >= from && s.measure <= to);
     if (a < 0) return [0, steps.length];
     let b = a;
     while (b < steps.length && steps[b].measure >= from && steps[b].measure <= to) b++;
     return [a, b];
-  }, [loop, loops, steps]);
+  }, [zone, steps]);
+
+  /** Da dove partire: la zona dal suo inizio; senza zona, da dove sei (o da capo se sei in fondo). */
+  const startFrom = useCallback(
+    () => (zone || idx <= range[0] || idx >= range[1] - 1 ? range[0] : idx),
+    [zone, idx, range],
+  );
 
   const required = useCallback(
     (i: number) => [...new Set((steps[i]?.notes ?? []).filter(n => !n.cont && !n.grace && allows(hand, n.staff)).map(n => n.midi))],
@@ -345,10 +383,16 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   useEffect(() => () => stopAll(), [stopAll]);
 
   // ── Ascolta ───────────────────────────────────────────────────────────────
-  const listen = useCallback(async () => {
+  // Letti alla fine dell'ascolto, per ricominciare la zona da capo.
+  const listenRef = useRef<((from?: number) => Promise<void>) | null>(null);
+  const zoneRef = useRef(zone);
+  const modeRef = useRef(mode);
+
+  const listen = useCallback(async (from?: number) => {
     stopAll();
     await audio.initialize();
-    const [a, b] = range;
+    const a = from ?? startFrom();
+    const b = range[1];
     if (a >= b) return;
     const t0 = steps[a].beat;
     const events = [];
@@ -371,21 +415,31 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     setResult(null);
     setMode('listen');
     setIdx(a);
-    audio.playPerformance(events, times, i => setIdx(a + i), () => setMode(m => (m === 'listen' ? 'idle' : m)));
-  }, [audio, stopAll, range, steps, hand, spb, mic]);
+    audio.playPerformance(events, times, i => setIdx(a + i), () => {
+      // Con una zona si ricomincia da capo finché non si mette in pausa.
+      if (zoneRef.current && modeRef.current === 'listen') {
+        timers.current.push(setTimeout(() => { if (modeRef.current === 'listen') void listenRef.current?.(); }, 400));
+      } else {
+        setMode(m => (m === 'listen' ? 'idle' : m));
+      }
+    });
+  }, [audio, stopAll, startFrom, range, steps, hand, spb, mic]);
+  useEffect(() => { listenRef.current = listen; zoneRef.current = zone; modeRef.current = mode; });
 
   // ── Esercita ──────────────────────────────────────────────────────────────
-  const startPractice = useCallback(async () => {
+  const startPractice = useCallback(async (from?: number) => {
     stopAll();
     await audio.initialize();
-    const first = nextRequired(range[0]);
+    const first = nextRequired(from ?? startFrom());
     if (first < 0) return;
     practice.current = { errors: 0, total: 0, stepError: false, startedAt: performance.now() };
     setFound([]);
     setResult(null);
+    setLap(1);
+    setLapNote(null);
     setIdx(first);
     setMode('practice');
-  }, [audio, stopAll, nextRequired, range]);
+  }, [audio, stopAll, nextRequired, startFrom]);
 
   /** L'altra mano, suonata dall'app: le note di questo passo e di quelli fino al prossimo tuo. */
   const accompany = useCallback(
@@ -414,6 +468,18 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     const next = nextRequired(at + 1);
     accompany(at, next < 0 ? range[1] : next);
     setFound([]);
+    if (next < 0 && zone) {
+      // Fine della zona: si ricomincia da capo, e si dice com'è andato il giro.
+      const pct = p.total ? Math.round(((p.total - p.errors) / p.total) * 100) : 0;
+      if (pct >= 90) audio.playSuccess();
+      setLapNote(`Giro ${lap} · ${pct}% giuste`);
+      timers.current.push(setTimeout(() => setLapNote(null), 2600));
+      setLap(l => l + 1);
+      practice.current = { errors: 0, total: 0, stepError: false, startedAt: performance.now() };
+      const first = nextRequired(range[0]);
+      if (first >= 0) setIdx(first);
+      return;
+    }
     if (next < 0) {
       const pct = p.total ? Math.round(((p.total - p.errors) / p.total) * 100) : 0;
       const secs = Math.round((performance.now() - p.startedAt) / 1000);
@@ -424,7 +490,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       return;
     }
     setIdx(next);
-  }, [idx, nextRequired, accompany, range, audio, progress, entry.id]);
+  }, [idx, nextRequired, accompany, range, audio, progress, entry.id, zone, lap]);
 
   /**
    * Dove il microfono aspetta le note: esercitandosi, il passo corrente; da
@@ -672,8 +738,70 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     return shownBeat.current;
   }, []);
 
+  // ── Tocchi sul rigo: ripartire da una battuta, scegliere la zona ──────────
+  /** La battuta sotto il dito (o la più vicina). */
+  const measureAt = (clientX: number) => {
+    const layer = spotLayer.current;
+    if (!layer || measureBoxes.length === 0) return -1;
+    const x = clientX - layer.getBoundingClientRect().left;
+    let best = -1;
+    let dist = Infinity;
+    measureBoxes.forEach((b, i) => {
+      if (b.w <= 0) return;
+      const d = x < b.x ? b.x - x : x > b.x + b.w ? x - b.x - b.w : 0;
+      if (d < dist) { dist = d; best = i; }
+    });
+    return best;
+  };
+
+  const onScoreTap = (e: React.MouseEvent) => {
+    if (loading) return;
+    const mi = measureAt(e.clientX);
+    if (mi < 0) return;
+    if (picking) {
+      // Prima la battuta d'inizio, poi quella di fine (anche al contrario).
+      if (picking.from === null) {
+        setPicking({ from: mi });
+        return;
+      }
+      const from = Math.min(picking.from, mi);
+      const to = Math.max(picking.from, mi);
+      stopAll();
+      setMode('idle');
+      setPicking(null);
+      setZone({ from, to });
+      setLapNote(null);
+      const first = steps.findIndex(s => s.measure >= from);
+      if (first >= 0) setIdx(first);
+      return;
+    }
+    const first = steps.findIndex(s => s.measure >= mi);
+    if (first < 0) return;
+    if (zone && (mi < zone.from || mi > zone.to)) {
+      // Fuori dalla zona: si torna al brano intero, da lì.
+      stopAll();
+      setZone(null);
+      setMode('idle');
+      setIdx(first);
+      return;
+    }
+    if (mode === 'listen') void listen(first);
+    else if (mode === 'practice') void startPractice(first);
+    else {
+      stopAll();
+      setResult(null);
+      setIdx(first);
+    }
+  };
+
+  /** La zona da colorare sul rigo: quella scelta, o quella che si sta scegliendo. */
+  const band = picking?.from != null ? { from: picking.from, to: picking.from } : picking ? null : zone;
+  const bandBox = band && measureBoxes[band.from] && measureBoxes[band.to]
+    ? { left: measureBoxes[band.from].x, width: measureBoxes[band.to].x + measureBoxes[band.to].w - measureBoxes[band.from].x }
+    : null;
+
   // ── Interfaccia ───────────────────────────────────────────────────────────
-  const measureNow = (steps[idx]?.measure ?? 0) + 1;
+  const measureNow = num(steps[idx]?.measure ?? 0);
   const need = waitingAt >= 0 ? required(waitingAt) : [];
   const showScore = view !== 'cascata';
   const showCascade = view !== 'spartito';
@@ -698,7 +826,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
           <p className="truncate text-[11px] text-ink3 sm:text-xs">
             <span className="hidden sm:inline">{entry.composer} · {LEVEL_LABEL[entry.level]} · </span>
             <span className="sm:hidden">{style.short} · </span>
-            batt. {measureNow}/{measureCount || '–'}
+            batt. {measureNow}/{measureCount ? num(measureCount - 1) : '–'}
           </p>
         </div>
         {onToggleMic && (
@@ -751,7 +879,17 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
           {/* min-h-full e non h-full: se il rigo è più alto dello spazio (telefono in
               orizzontale) si scorre anche in verticale invece di tagliarlo. */}
           <div className="flex min-h-full w-max items-center">
-            <div className="relative flex flex-none">
+            <div className={`relative flex flex-none ${picking ? 'cursor-crosshair' : 'cursor-pointer'}`} onClick={onScoreTap}>
+              {bandBox && band && (
+                <div
+                  className="pointer-events-none absolute inset-y-1 rounded-xl border-x-2 border-brand/70 bg-brand/[0.09]"
+                  style={{ left: bandBox.left, width: bandBox.width }}
+                >
+                  <span className="absolute left-1.5 top-1 rounded-full bg-brand px-2 py-0.5 text-[10px] font-black text-white shadow sm:text-xs">
+                    {picking ? `Da batt. ${num(band.from)}…` : band.from === band.to ? `Ripeti batt. ${num(band.from)}` : `Ripeti ${num(band.from)}–${num(band.to)}`}
+                  </span>
+                </div>
+              )}
               {/* Le etichette delle mani restano ferme a sinistra mentre il rigo scorre. */}
               <div className="sticky left-0 z-20 w-0 flex-none">
                 {staffTops.slice(0, 2).map((st, i) => (
@@ -810,6 +948,11 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             Non riesco a caricare la partitura.
           </div>
         )}
+        {(picking || lapNote) && (
+          <div className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-full bg-brand px-4 py-1.5 text-sm font-black text-white shadow-lg sm:text-base">
+            {picking ? (picking.from === null ? 'Tocca la prima battuta da ripetere' : 'Ora tocca l’ultima battuta') : lapNote}
+          </div>
+        )}
         {need.length > 0 && (
           <div
             className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-slate-900/90 px-4 py-1.5 text-sm font-black text-white shadow-lg ring-1 ring-white/10 sm:text-base"
@@ -829,12 +972,12 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
                 {result.pct >= 95 ? 'Pulito. Alza il tempo del 10% e rifallo.' : 'Rifallo allo stesso tempo: la precisione viene prima della velocità.'}
               </p>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={startPractice} className="flex items-center justify-center gap-1.5 rounded-xl bg-surface2 py-3 text-sm font-bold">
+                <button type="button" onClick={() => void startPractice()} className="flex items-center justify-center gap-1.5 rounded-xl bg-surface2 py-3 text-sm font-bold">
                   <RotateCcw className="h-4 w-4" /> Ancora
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setRate(r => Math.min(1.2, Math.round((r + 0.1) * 100) / 100)); timers.current.push(setTimeout(startPractice, 50)); }}
+                  onClick={() => { setRate(r => Math.min(1.2, Math.round((r + 0.1) * 100) / 100)); timers.current.push(setTimeout(() => void startPractice(), 50)); }}
                   className="flex items-center justify-center gap-1.5 rounded-xl bg-brand py-3 text-sm font-bold text-white"
                 >
                   <Plus className="h-4 w-4" /> Più veloce
@@ -901,19 +1044,40 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             Do Re Mi
           </button>
           <span className="mx-0.5 h-5 w-px flex-none bg-line" />
-          <button type="button" onClick={() => { stopAll(); setMode('idle'); setLoop(null); setIdx(0); }} className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${loop === null ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink2'}`}>
+          <button
+            type="button"
+            onClick={() => { stopAll(); setMode('idle'); setPicking(p => (p ? null : { from: null })); }}
+            aria-pressed={!!picking}
+            className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-bold ${picking ? 'border-brand bg-brand text-white' : 'border-line text-ink2'}`}
+          >
+            <Repeat className="h-3.5 w-3.5" /> {picking ? 'Annulla' : 'Ripeti zona'}
+          </button>
+          {zone && !picking && (
+            <button
+              type="button"
+              onClick={() => { stopAll(); setMode('idle'); setZone(null); setLapNote(null); }}
+              className="flex shrink-0 items-center gap-1 rounded-full border border-brand bg-brand/15 px-3 py-1 text-xs font-bold tabular-nums text-brand"
+              aria-label="Togli la zona"
+            >
+              {zone.from === zone.to ? `Batt. ${num(zone.from)}` : `Batt. ${num(zone.from)}–${num(zone.to)}`} <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button type="button" onClick={() => { stopAll(); setMode('idle'); setZone(null); setPicking(null); setIdx(0); }} className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${!zone ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink2'}`}>
             Tutto
           </button>
-          {loops.map((l, i) => (
-            <button
-              key={l.label}
-              type="button"
-              onClick={() => { stopAll(); setMode('idle'); setLoop(i); setIdx(steps.findIndex(s => s.measure >= l.from)); }}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold tabular-nums ${loop === i ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink2'}`}
-            >
-              {l.label}
-            </button>
-          ))}
+          {loops.map(l => {
+            const active = zone?.from === l.from && zone?.to === l.to;
+            return (
+              <button
+                key={l.label}
+                type="button"
+                onClick={() => { stopAll(); setMode('idle'); setPicking(null); setZone({ from: l.from, to: l.to }); setLapNote(null); setIdx(steps.findIndex(s => s.measure >= l.from)); }}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold tabular-nums ${active ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink2'}`}
+              >
+                {l.label}
+              </button>
+            );
+          })}
           {onGuided && (
             <button type="button" onClick={() => { stopAll(); onGuided(); }} className="flex shrink-0 items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-bold text-ink2">
               Studio guidato <ChevronRight className="h-3.5 w-3.5" />
