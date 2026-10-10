@@ -110,12 +110,56 @@ function render(samples, midi, holdSec, vel, pedal) {
   return out;
 }
 
-/** events: [{ note, t, dur, vel }] → registrazione mono. */
+/**
+ * Passa-basso a un polo, sul posto. Un tasto suonato piano non è solo più
+ * debole: il martelletto lento eccita meno le armoniche alte, il suono è più
+ * scuro. `lp` di un evento (Hz) lo imita; senza `lp` la nota resta com'è.
+ */
+export function lowpass(x, hz) {
+  const a = 1 - Math.exp((-2 * Math.PI * hz) / SR);
+  let y = 0;
+  for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); x[i] = y; }
+  return x;
+}
+
+/** Passa-basso biquadratico (RBJ), sul posto. */
+function biquadLowpass(x, fc, q) {
+  const w = (2 * Math.PI * fc) / SR, cw = Math.cos(w), al = Math.sin(w) / (2 * q);
+  const b0 = (1 - cw) / 2 / (1 + al), b1 = (1 - cw) / (1 + al), a1 = (-2 * cw) / (1 + al), a2 = (1 - al) / (1 + al);
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = b0 * x[i] + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x[i]; y2 = y1; y1 = v; x[i] = v;
+  }
+  return x;
+}
+
+/**
+ * Il timbro dell'iPad vero (registrazione di prova dell'utente, ottobre
+ * 2026): suonate normalmente, dal Re4 in su le note arrivano quasi solo come
+ * fondamentale — la 2ª armonica 15–25 dB sotto, la 3ª 25–40 (nei campioni del
+ * banco 3–6 e 10–20 dB). Do4 e Do♯4 a metà strada (2ª a −7 dB); sotto, la
+ * fondamentale è già la più debole, come nel banco: la nota resta com'è.
+ * `tilt` di un evento: passa-basso di Butterworth del 4° ordine a `tilt`
+ * volte la fondamentale.
+ */
+export function darken(x, midi, tilt) {
+  const f0 = 440 * 2 ** ((midi - 69) / 12);
+  if (f0 < 250) return x;
+  const fc = Math.min(f0 * (f0 < 290 ? 1.6 : tilt), SR * 0.45);
+  biquadLowpass(x, fc, 0.5412);
+  biquadLowpass(x, fc, 1.3066);
+  return x;
+}
+
+/** events: [{ note, t, dur, vel, lp?, tilt? }] → registrazione mono. */
 export function perform(samples, events, { pedal = false, length = 0 } = {}) {
   const end = Math.max(length, ...events.map(e => e.t + e.dur + 1.5));
   const buf = new Float32Array(Math.ceil(end * SR));
   for (const e of events) {
     const r = render(samples, noteToMidi(e.note), e.dur, e.vel ?? 0.6, pedal);
+    if (e.lp) lowpass(r, e.lp);
+    if (e.tilt) darken(r, noteToMidi(e.note), e.tilt);
     const o = Math.floor(e.t * SR);
     for (let i = 0; i < r.length && o + i < buf.length; i++) buf[o + i] += r[i];
   }
@@ -192,6 +236,23 @@ export function knocks(len, every, rand) {
     const o = Math.floor(c * SR);
     for (let i = 0; i < 400 && o + i < len; i++) out[o + i] += Math.exp(-i / 60) * (rand() * 2 - 1);
   }
+  return out;
+}
+
+/**
+ * Il livello d'ingresso: `x` attenuato di `db` e poi il rumore di fondo
+ * (stanza + preamplificatore del microfono) a `floorDb` dBFS di RMS. Il rumore
+ * si aggiunge DOPO: se il piano è lontano o suonato piano, il fruscio resta
+ * lo stesso — è questo che rende difficile l'ascolto senza guadagno automatico.
+ */
+export function level(x, db, floorDb, rand) {
+  const g = 10 ** (db / 20);
+  const n = noise(new Float32Array(x.length), 1, rand);
+  let s = 0;
+  for (const v of n) s += v * v;
+  const k = 10 ** (floorDb / 20) / Math.sqrt(s / Math.max(1, n.length));
+  const out = new Float32Array(x.length);
+  for (let i = 0; i < x.length; i++) out[i] = x[i] * g + n[i] * k;
   return out;
 }
 

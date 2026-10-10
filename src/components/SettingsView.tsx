@@ -27,7 +27,7 @@ interface SettingsViewProps {
  * ogni giorno per una cosa che serve una volta: qui si controlla quando serve.
  */
 function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggleMic'>) {
-  const strong = mic.level > 0.08;
+  const strong = mic.level > 0.3;
   return (
     <Card>
       <SectionTitle>Microfono</SectionTitle>
@@ -42,7 +42,7 @@ function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggl
       </div>
       {mic.isListening && (
         <div className="mt-3 space-y-2">
-          <Bar pct={Math.min(1, mic.level * 3.2)} color={strong ? 'bg-emerald-500' : 'bg-amber-500'} />
+          <Bar pct={Math.min(1, mic.level)} color={strong ? 'bg-emerald-500' : 'bg-amber-500'} />
           <div className="flex items-center justify-between text-xs text-ink2">
             <span>
               {mic.liveNote ? `Sento: ${italianOf(mic.liveNote.name)}${mic.liveNote.octave}` : 'In ascolto…'}

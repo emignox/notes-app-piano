@@ -53,17 +53,26 @@ export interface ConfirmedNote {
   onsetAt: number;
 }
 
-/** Le note attese arrivate (numeri MIDI), con un numero che cambia a ogni arrivo. */
+/**
+ * Le note attese arrivate finora per l'attesa `token` (numeri MIDI), con un
+ * numero che cambia a ogni arrivo. È CUMULATIVO: se due aggiornamenti
+ * arrivano insieme e lo schermo ne vede solo l'ultimo, non si perde niente.
+ */
 export interface ChordMatch {
+  token: string;
   midis: number[];
   id: number;
 }
 
 interface Expectation {
   token: string;
+  /** Il token come l'ha dato chi aspetta (senza le note): torna negli eventi. */
+  user: string;
   notes: number[];
   since: number;
   got: Set<number>;
+  /** Già "consumata" nel riconoscitore (le sue note non valgono per l'attesa dopo). */
+  consumed?: boolean;
 }
 
 export function usePitchDetection() {
@@ -182,12 +191,12 @@ export function usePitchDetection() {
             }
             const ex = expectRef.current;
             if (ex) {
-              matcher.expect(ex.notes.filter(n => !ex.got.has(n)));
+              matcher.expect(ex.notes.filter(n => !ex.got.has(n)), ex.notes);
               const got = matcher.matched(ex.notes, ex.since).filter(n => !ex.got.has(n));
               if (got.length) {
                 got.forEach(n => ex.got.add(n));
-                if (ex.notes.every(n => ex.got.has(n))) matcher.consume(ex.notes, now);
-                setChordMatch({ midis: got, id: ++matchIdRef.current });
+                if (ex.notes.every(n => ex.got.has(n))) { matcher.consume(ex.notes, now); ex.consumed = true; }
+                setChordMatch({ token: ex.user, midis: [...ex.got], id: ++matchIdRef.current });
               }
             } else {
               matcher.expect([]);
@@ -235,6 +244,28 @@ export function usePitchDetection() {
   }, []);
 
   /**
+   * L'app ha smesso di suonare prima del previsto (Pausa, Stop, cambio di
+   * mano): si torna ad ascoltare dopo la coda dell'altoparlante, non quando
+   * sarebbe finito il brano. Senza, dopo "Ascolta" e "Pausa" il microfono
+   * restava sordo per minuti — con la barra del volume che si muoveva.
+   */
+  const release = useCallback((tailMs = 1200) => {
+    const until = Date.now() + tailMs;
+    trackerRef.current.release(until);
+    matcherRef.current?.release(until);
+  }, []);
+
+  /**
+   * L'app sta per suonare queste note dall'altoparlante (l'accompagnamento)
+   * e si continua ad ascoltare: `delayMs` è fra quanto parte ognuna. Le note
+   * e le loro armoniche, in quel momento, non sono di chi suona.
+   */
+  const external = useCallback((notes: { midi: number; delayMs: number }[]) => {
+    const now = Date.now();
+    matcherRef.current?.external(notes.map(n => ({ midi: n.midi, at: now + n.delayMs })));
+  }, []);
+
+  /**
    * Le note (MIDI) che il brano aspetta adesso; `token` cambia a ogni passo
    * (due passi di fila con lo stesso accordo sono due attese diverse).
    * `null` quando non si aspetta niente.
@@ -247,7 +278,11 @@ export function usePitchDetection() {
     }
     const key = `${token}|${notes.join(',')}`;
     if (prev?.token === key) return;
-    expectRef.current = { token: key, notes, since: Date.now() - EXPECT_LOOKBACK_MS, got: new Set() };
+    // Il passo di prima è stato completato altrove (tasto sullo schermo, o
+    // l'ascolto di una nota alla volta): i suoi attacchi non devono valere
+    // per il passo nuovo, come se l'avesse preso il riconoscitore.
+    if (prev && !prev.consumed && prev.got.size > 0) matcherRef.current?.consume(prev.notes, Date.now());
+    expectRef.current = { token: key, user: token, notes, since: Date.now() - EXPECT_LOOKBACK_MS, got: new Set() };
   }, []);
 
   useEffect(
@@ -259,5 +294,5 @@ export function usePitchDetection() {
     [],
   );
 
-  return { isListening, permissionDenied, liveNote, confirmedNote, level, start, stop, suppress, expect, chordMatch };
+  return { isListening, permissionDenied, liveNote, confirmedNote, level, start, stop, suppress, release, external, expect, chordMatch };
 }

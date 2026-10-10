@@ -30,19 +30,30 @@ const CLARITY_MIN = 0.72;
 /** Sotto questa chiarezza si butta anche la storia raccolta finora. */
 const CLARITY_JUNK = 0.45;
 /**
- * Pavimento assoluto di volume. Era 0,003 e si perdevano le note suonate
- * piano nel registro acuto: ora che una nota vuole un attacco e un'altezza
- * ferma, silenzio, ronzio e colpi non passano comunque (verificato).
+ * Pavimento assoluto di volume: la soglia vera è il rumore di fondo ×
+ * NOISE_MARGIN. Era 0,0015 (−56 dBFS) e sull'iPad, che col microfono "grezzo"
+ * manda il pianoforte a −45/−57 dBFS con il rumore a −88, buttava le note
+ * suonate normalmente: si doveva picchiare. Non più in basso di −66 dBFS: un
+ * ronzio ad altezza ferma (frigorifero, trasformatore) sotto quel livello
+ * diventava una nota dopo l'altra, perché il rumore si misura solo quando
+ * non c'è un'altezza.
  */
-const RMS_FLOOR = 0.0015;
+const RMS_FLOOR = 0.0005;
 /** Quanto il suono deve superare il rumore di fondo. */
 const NOISE_MARGIN = 1.9;
 /** La soglia non sale mai sopra questo valore, neanche in una stanza rumorosa. */
 const GATE_MAX = 0.02;
 /** Tolleranza in semitoni per considerare due letture "la stessa nota". */
 const SEMITONE_TOLERANCE = 0.6;
-/** Riferimento per la barra del livello a schermo. */
-const LEVEL_FULL = 0.06;
+/**
+ * La barra del livello a schermo va dal rumore di fondo (+LEVEL_FROM_DB) a
+ * LEVEL_SPAN_DB sopra: misurarla in volume assoluto la teneva quasi ferma
+ * sull'iPad, e invitava a suonare fortissimo.
+ */
+const LEVEL_FROM_DB = 6;
+const LEVEL_SPAN_DB = 36;
+/** Quanto può salire la stima del rumore, in dB al secondo (in una stanza che diventa più rumorosa). */
+const NOISE_UP_DB_S = 3;
 
 // ── Attacchi ────────────────────────────────────────────────────────────────
 /** Blocchi da 256 campioni (~5 ms): la risoluzione con cui si data un attacco. */
@@ -133,6 +144,7 @@ export class NoteTracker {
   private history: Reading[] = [];
   private lastConfirmed = -99;
   private noise = 0.01;
+  private noiseAt = 0;
   private armed: Armed = 'strong';
   private blockedUntil = 0;
 
@@ -153,6 +165,7 @@ export class NoteTracker {
     this.history = [];
     this.lastConfirmed = -99;
     this.noise = 0.01;
+    this.noiseAt = 0;
     this.armed = 'strong';
     this.blockedUntil = 0;
     this.lastOnsetAt = -1e9;
@@ -172,6 +185,15 @@ export class NoteTracker {
     const until = now + ms;
     if (until > this.blockedUntil) this.blockedUntil = until;
     this.history = [];
+  }
+
+  /**
+   * L'app ha smesso di suonare prima del previsto (pausa, stop): la sordità
+   * finisce a `until` (la coda dell'altoparlante), non quando sarebbe finito
+   * il brano.
+   */
+  release(until: number) {
+    if (until < this.blockedUntil) this.blockedUntil = until;
   }
 
   /** Come block, ma pretende anche un attacco nuovo per la prossima nota. */
@@ -239,17 +261,25 @@ export class NoteTracker {
     frame?: Float32Array,
     sampleRate = 48000,
   ): FrameResult {
-    const level = Math.min(1, rms / LEVEL_FULL);
     const pitched = clarity >= CLARITY_MIN && pitchHz > 50;
 
     // Il rumore di fondo si stima SOLO sui frame in cui non si sente una nota:
     // aggiornarlo mentre il piano suona faceva inseguire alla soglia il segnale.
-    if (!pitched) {
-      this.noise =
-        rms < this.noise
-          ? this.noise * 0.7 + rms * 0.3 // il silenzio si riconosce subito
-          : this.noise * 0.99 + rms * 0.01; // una stanza più rumorosa, pian piano
+    // Scende subito; sale piano e a tempo, e solo per suoni vicini al rumore:
+    // l'attacco di un accordo dissonante (chiarezza bassa) o la coda della
+    // nota appena suonata non sono "rumore".
+    const dt = this.noiseAt ? Math.max(0, Math.min(0.2, (now - this.noiseAt) / 1000)) : 0;
+    this.noiseAt = now;
+    // Il silenzio digitale (il microfono che si apre, un'interruzione: sotto
+    // −100 dBFS) non è rumore: imparato da lì, la stima restava troppo bassa
+    // per sempre, perché dopo sale solo vicino al rumore.
+    if (!pitched && rms > 1e-5) {
+      if (rms < this.noise) this.noise = this.noise * 0.7 + rms * 0.3; // il silenzio si riconosce subito
+      else if (rms < this.noise * 3) this.noise = Math.min(rms, this.noise * 10 ** ((NOISE_UP_DB_S * dt) / 20));
     }
+    const level = rms > 0
+      ? Math.max(0, Math.min(1, (20 * Math.log10(rms / Math.max(this.noise, 1e-6)) - LEVEL_FROM_DB) / LEVEL_SPAN_DB))
+      : 0;
     const gate = Math.min(GATE_MAX, Math.max(RMS_FLOOR, this.noise * NOISE_MARGIN));
 
     // Il volume recente si tiene anche nel silenzio: è da lì che parte un attacco.

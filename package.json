@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "check:pezzi": "node scripts/check-pieces.mjs",
     "bench:mic": "node scripts/bench-mic.mjs",
-    "bench:pezzi": "node scripts/bench-pieces.mjs"
+    "bench:pezzi": "node scripts/bench-pieces.mjs",
+    "bench:vero": "node scripts/bench-real.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.14.0",

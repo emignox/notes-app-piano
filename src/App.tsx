@@ -135,10 +135,12 @@ export default function App() {
       level: pitch.level,
       confirmedNote: pitch.confirmedNote,
       suppress: pitch.suppress,
+      release: pitch.release,
+      external: pitch.external,
       expect: pitch.expect,
       chordMatch: pitch.chordMatch,
     }),
-    [pitch.isListening, pitch.liveNote, pitch.level, pitch.confirmedNote, pitch.suppress, pitch.expect, pitch.chordMatch],
+    [pitch.isListening, pitch.liveNote, pitch.level, pitch.confirmedNote, pitch.suppress, pitch.release, pitch.external, pitch.expect, pitch.chordMatch],
   );
 
   return (
@@ -189,7 +191,7 @@ export default function App() {
               <PieceView
                 progress={progress}
                 audio={audio}
-                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, liveNote: pitch.liveNote, level: pitch.level, suppress: pitch.suppress, expect: pitch.expect, chordMatch: pitch.chordMatch }}
+                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, liveNote: pitch.liveNote, level: pitch.level, suppress: pitch.suppress, release: pitch.release, external: pitch.external, expect: pitch.expect, chordMatch: pitch.chordMatch }}
                 notify={notify}
                 section={songSection}
                 onSection={setSongSection}

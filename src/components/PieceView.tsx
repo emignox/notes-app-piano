@@ -57,6 +57,8 @@ interface PieceViewProps {
     liveNote: LiveNote | null;
     level: number;
     suppress: (ms?: number) => void;
+    release: (tailMs?: number) => void;
+    external?: (notes: { midi: number; delayMs: number }[]) => void;
     expect: (notes: number[] | null, token?: string) => void;
     chordMatch: ChordMatch | null;
   };
@@ -140,7 +142,16 @@ function PieceChallenge({
   }, [loopBars, loopMeasure, availableMeasures, basePart]);
 
   const [idx, setIdx] = useState(part.from);
-  const [found, setFound] = useState<string[]>([]);
+  const [found, setFoundState] = useState<string[]>([]);
+  /**
+   * Le note trovate anche in un riferimento aggiornato subito: due conferme
+   * nello stesso istante (accordo e nota singola) leggevano lo stesso stato
+   * vecchio e la seconda cancellava la prima.
+   */
+  const foundRef = useRef<string[]>([]);
+  const setFound = useCallback((list: string[]) => { foundRef.current = list; setFoundState(list); }, []);
+  /** Cambia a ogni ripartenza: l'attesa di un passo già visto riparte da capo. */
+  const [attempt, setAttempt] = useState(0);
   const [results, setResults] = useState<NoteResult[]>(() => piece.steps.map(() => 'unanswered'));
   const [mistakes, setMistakes] = useState(0);
   const [bpm, setBpm] = useState(piece.bpm);
@@ -178,11 +189,13 @@ function PieceChallenge({
   const doneCount = Math.max(0, idx - part.from);
   const stopSequence = audio.stopSequence;
 
+  const release = mic.release;
   const stopListening = useCallback(() => {
     stopSequence();
+    release();
     setPlaying(false);
     setPlayingIdx(null);
-  }, [stopSequence]);
+  }, [stopSequence, release]);
 
   /**
    * L'ascolto usa l'esecuzione interpretata: legature, staccati, dinamiche e
@@ -213,7 +226,7 @@ function PieceChallenge({
         events,
         times,
         i => setPlayingIdx(from + i),
-        () => { setPlayingIdx(null); setPlaying(false); setPlayingWhole(false); },
+        () => { mic.release(); setPlayingIdx(null); setPlaying(false); setPlayingWhole(false); },
       );
     },
     [piece, bpm, part.from, part.to, audio, mic],
@@ -256,7 +269,7 @@ function PieceChallenge({
       setShowKeys(false);
       stepErrorRef.current = false;
     },
-    [part.to, finish],
+    [part.to, finish, setFound],
   );
 
   const completeStep = useCallback(() => {
@@ -264,7 +277,10 @@ function PieceChallenge({
     updated[idx] = stepErrorRef.current ? 'wrong' : 'correct';
     setResults(updated);
     haptics.correct();
-    setTimeout(() => goToStep(idx + 1, updated), 200);
+    // Subito: aspettare anche solo 200 ms faceva perdere la nota dopo a chi
+    // suona svelto (l'attesa del passo nuovo non c'era ancora). Il passo
+    // appena preso resta verde sul rigo.
+    goToStep(idx + 1, updated);
   }, [results, idx, goToStep]);
 
   /**
@@ -313,13 +329,13 @@ function PieceChallenge({
 
       audio.playNote(toneNote, 0.9);
       mic.suppress(900);
-      const nextFound = [...found, target];
+      const nextFound = [...foundRef.current, target];
       setFound(nextFound);
       setFeedback(null);
       haptics.tap();
       if (nextFound.length >= required.length) completeStep();
     },
-    [done, step, missing, found, required.length, completeStep, audio, mic],
+    [done, step, missing, required.length, completeStep, audio, mic, setFound],
   );
 
   // Microfono: l'app dice quali note aspetta, e il microfono le cerca tutte
@@ -335,9 +351,10 @@ function PieceChallenge({
   const waitRequired = useMemo(() => (waitIdx < 0 ? [] : requiredNotes(piece.steps, waitIdx, hand)), [waitIdx, piece.steps, hand]);
 
   const expect = mic.expect;
+  const waitToken = `${waitIdx}-${hand}-${attempt}`;
   useEffect(() => {
-    expect(mic.isListening && !done && waitIdx >= 0 ? waitRequired.map(midiOf) : null, `${waitIdx}-${hand}`);
-  }, [expect, mic.isListening, done, waitIdx, waitRequired, hand]);
+    expect(mic.isListening && !done && waitIdx >= 0 ? waitRequired.map(midiOf) : null, waitToken);
+  }, [expect, mic.isListening, done, waitIdx, waitRequired, waitToken]);
   useEffect(() => () => expect(null), [expect]);
 
   /** Note arrivate per un passo più avanti (dopo pause o legature): si va lì e si contano. */
@@ -355,15 +372,16 @@ function PieceChallenge({
         goToStep(waitIdx, updated);
         return;
       }
-      const targets = missing.filter(n => midis.includes(midiOf(n)));
+      const have = foundRef.current;
+      const targets = required.filter(n => !have.some(f => sameNote(f, n)) && midis.includes(midiOf(n)));
       if (targets.length === 0) return;
-      const nextFound = [...found, ...targets];
+      const nextFound = [...have, ...targets];
       setFound(nextFound);
       setFeedback(null);
       haptics.tap();
       if (nextFound.length >= required.length) completeStep();
     },
-    [done, step, waitIdx, idx, waitRequired, results, goToStep, missing, found, required.length, completeStep],
+    [done, step, waitIdx, idx, waitRequired, results, goToStep, required, completeStep, setFound],
   );
 
   useEffect(() => {
@@ -377,7 +395,8 @@ function PieceChallenge({
     const m = mic.chordMatch;
     if (!mic.isListening || !m || m.id <= micBaseRef.current) return;
     micBaseRef.current = m.id;
-    acceptFromMic(m.midis);
+    // un arrivo per un passo che non è più questo non conta
+    acceptFromMic(m.token === waitToken ? m.midis : []);
   }, [mic.chordMatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // E l'ascolto di una nota alla volta, insieme: se una delle due la sente,
@@ -403,6 +422,7 @@ function PieceChallenge({
       savedRef.current = false;
       setIdx(at);
       setFound([]);
+      setAttempt(a => a + 1);
       setResults(piece.steps.map(() => 'unanswered'));
       setMistakes(0);
       setDone(false);
@@ -411,7 +431,7 @@ function PieceChallenge({
       setSuggestedBpm(null);
       stepErrorRef.current = false;
     },
-    [piece.steps, stopListening],
+    [piece.steps, stopListening, setFound],
   );
 
   const switchHand = useCallback((h: Hand) => { setHand(h); reset(part.from); }, [reset, part.from]);

@@ -42,6 +42,10 @@ interface MicApi {
   liveNote: LiveNote | null;
   level: number;
   suppress: (ms?: number) => void;
+  /** L'app ha smesso di suonare: il microfono torna ad ascoltare dopo la coda. */
+  release: (tailMs?: number) => void;
+  /** L'app suona queste note mentre si ascolta (l'accompagnamento): non sono di chi suona. */
+  external?: (notes: { midi: number; delayMs: number }[]) => void;
 }
 
 const NOTE_INDEX: Record<string, number> = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
@@ -201,7 +205,16 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   /** Giro della zona in Esercita, e com'è andato quello appena finito. */
   const [lap, setLap] = useState(1);
   const [lapNote, setLapNote] = useState<string | null>(null);
-  const [found, setFound] = useState<number[]>([]);
+  const [found, setFoundState] = useState<number[]>([]);
+  /**
+   * Le note trovate anche in un riferimento, aggiornato SUBITO: due conferme
+   * nello stesso istante (accordo e nota singola) leggevano lo stesso stato
+   * vecchio e la seconda cancellava la prima.
+   */
+  const foundRef = useRef<number[]>([]);
+  const setFound = useCallback((list: number[]) => { foundRef.current = list; setFoundState(list); }, []);
+  /** Cambia a ogni "Esercita": l'attesa di un passo già visto riparte da capo. */
+  const [runId, setRunId] = useState(0);
   const [badKey, setBadKey] = useState<number | null>(null);
   const [result, setResult] = useState<{ pct: number; secs: number; notes: number } | null>(null);
   const [win, setWin] = useState<[number, number]>([48, 72]);
@@ -375,11 +388,20 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     [required, range],
   );
 
+  // `mic` cambia a ogni aggiornamento del volume: qui serve solo la funzione
+  // (stabile), altrimenti "ferma tutto" cambierebbe di continuo e il suo
+  // effetto di pulizia fermerebbe la musica.
+  const release = mic.release;
+  const external = mic.external;
+  // Lo stesso per `audio`: è un oggetto nuovo a ogni disegno dell'app, la sua
+  // funzione per fermare invece è sempre quella.
+  const stopSequence = audio.stopSequence;
   const stopAll = useCallback(() => {
-    audio.stopSequence();
+    stopSequence();
     timers.current.forEach(clearTimeout);
     timers.current = [];
-  }, [audio]);
+    release();
+  }, [stopSequence, release]);
   useEffect(() => () => stopAll(), [stopAll]);
 
   // ── Ascolta ───────────────────────────────────────────────────────────────
@@ -420,6 +442,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       if (zoneRef.current && modeRef.current === 'listen') {
         timers.current.push(setTimeout(() => { if (modeRef.current === 'listen') void listenRef.current?.(); }, 400));
       } else {
+        mic.release();
         setMode(m => (m === 'listen' ? 'idle' : m));
       }
     });
@@ -437,9 +460,10 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     setResult(null);
     setLap(1);
     setLapNote(null);
+    setRunId(r => r + 1);
     setIdx(first);
     setMode('practice');
-  }, [audio, stopAll, nextRequired, startFrom]);
+  }, [audio, stopAll, nextRequired, startFrom, setFound]);
 
   /** L'altra mano, suonata dall'app: le note di questo passo e di quelli fino al prossimo tuo. */
   const accompany = useCallback(
@@ -447,17 +471,24 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       if (hand === 'both') return;
       const t0 = steps[from].beat;
       const events = [];
+      const heard: { midi: number; delayMs: number }[] = [];
       for (let i = from; i < to && i < steps.length; i++) {
         for (const n of steps[i].notes) {
           if (n.cont || allows(hand, n.staff)) continue;
-          events.push({ notes: [midiTone(n.midi)], at: Math.max(0, (n.start - t0) * spb), hold: Math.max(0.06, n.dur * spb * 0.95), velocity: 0.42, stepIndex: i });
+          const at = Math.max(0, (n.start - t0) * spb);
+          events.push({ notes: [midiTone(n.midi)], at, hold: Math.max(0.06, n.dur * spb * 0.95), velocity: 0.42, stepIndex: i });
+          heard.push({ midi: n.midi, delayMs: at * 1000 });
         }
       }
-      // Il microfono sente anche l'altoparlante, ma cerca solo le note della
-      // tua mano: quelle dell'accompagnamento non le aspetta.
-      if (events.length) audio.playPerformance(events, []);
+      // Il microfono sente anche l'altoparlante, a pochi centimetri: cerca
+      // solo le note della tua mano, e sa quali (e quando) suona l'app — le
+      // loro armoniche (l'ottava, la dodicesima) cadono sulle note dell'altra mano.
+      if (events.length) {
+        external?.(heard);
+        audio.playPerformance(events, []);
+      }
     },
-    [hand, steps, spb, audio],
+    [hand, steps, spb, audio, external],
   );
 
   const completeStep = useCallback((at: number = idx) => {
@@ -490,7 +521,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       return;
     }
     setIdx(next);
-  }, [idx, nextRequired, accompany, range, audio, progress, entry.id, zone, lap]);
+  }, [idx, nextRequired, accompany, range, audio, progress, entry.id, zone, lap, setFound]);
 
   /**
    * Dove il microfono aspetta le note: esercitandosi, il passo corrente; da
@@ -508,7 +539,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       if (waitingAt < 0) return;
       const at = waitingAt;
       const need = required(at);
-      const base = mode === 'practice' ? found : [];
+      const base = mode === 'practice' ? foundRef.current : [];
       const fresh = midis.filter(m => need.includes(m) && !base.includes(m));
       if (fresh.length === 0) return;
       if (mode === 'idle') {
@@ -524,7 +555,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       haptics.correct();
       if (need.every(m => now.includes(m))) completeStep(at);
     },
-    [waitingAt, mode, required, found, completeStep, stopAll],
+    [waitingAt, mode, required, completeStep, stopAll, setFound],
   );
 
   /** Un tasto toccato sullo schermo: giusto, o sbagliato (rosso). */
@@ -533,8 +564,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       if (mode !== 'practice') return;
       const need = required(idx);
       if (need.includes(midi)) {
-        if (found.includes(midi)) return;
-        const now = [...found, midi];
+        if (foundRef.current.includes(midi)) return;
+        const now = [...foundRef.current, midi];
         setFound(now);
         haptics.correct();
         if (need.every(m => now.includes(m))) completeStep();
@@ -545,7 +576,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         timers.current.push(setTimeout(() => setBadKey(k => (k === midi ? null : k)), 450));
       }
     },
-    [mode, required, idx, found, completeStep],
+    [mode, required, idx, completeStep, setFound],
   );
 
   const pressKey = useCallback(
@@ -562,16 +593,22 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   // microfono le cerca tutte insieme (accordi compresi). Dal microfono non
   // arrivano errori: una nota sentita male non deve diventare uno sbaglio.
   const expect = mic.expect;
+  // L'attesa è di QUEL passo, in quel giro della zona e in quel tentativo:
+  // una zona di un solo accordo ripeteva la stessa attesa, già completa. Non
+  // dipende dalla modalità: cominciando a suonare da fermi si passa
+  // all'esercizio a metà accordo, e il resto dell'accordo deve valere.
+  const waitToken = `${waitingAt}-${lap}-${runId}`;
   useEffect(() => {
-    expect(waitingAt >= 0 && mic.isListening ? required(waitingAt) : null, `${mode}-${waitingAt}`);
-  }, [expect, waitingAt, mode, mic.isListening, required]);
+    expect(waitingAt >= 0 && mic.isListening ? required(waitingAt) : null, waitToken);
+  }, [expect, waitingAt, waitToken, mic.isListening, required]);
   useEffect(() => () => expect(null), [expect]);
 
   useEffect(() => {
     const m = mic.chordMatch;
     if (!mic.isListening || !m || m.id <= micBase.current) return;
     micBase.current = m.id;
-    accept(m.midis);
+    // un arrivo per un passo che non è più questo non conta
+    accept(m.token === waitToken ? m.midis : []);
   }, [mic.chordMatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Anche l'ascolto di una nota alla volta: se lui la sente e l'altro no, la

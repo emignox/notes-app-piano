@@ -30,6 +30,8 @@ interface MelodyViewProps {
     level: number;
     confirmedNote: ConfirmedNote | null;
     suppress: (ms?: number) => void;
+    release: (tailMs?: number) => void;
+    external?: (notes: { midi: number; delayMs: number }[]) => void;
     expect: (notes: number[] | null, token?: string) => void;
     chordMatch: ChordMatch | null;
   };
