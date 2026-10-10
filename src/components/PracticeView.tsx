@@ -131,6 +131,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
   const [xpGained, setXpGained] = useState(0);
 
   const logRef = useRef<SessionLogEntry[]>([]);
+  /** L'ultima nota del microfono usata come risposta: vale per una carta sola. */
+  const usedMicIdRef = useRef(0);
   const [log, setLog] = useState<SessionLogEntry[]>([]);
   const requeuesRef = useRef<Record<string, number>>({});
   /** Diagnosi dell'ultimo errore per nota: la si ricorda quando la nota torna. */
@@ -416,6 +418,7 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
           playNote={audio.playNote}
           playError={audio.playError}
           suppressMic={mic.suppress}
+          usedMicIdRef={usedMicIdRef}
           warning={warnings[current.noteId]}
         />
       </Card>

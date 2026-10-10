@@ -61,6 +61,11 @@ export interface PracticeCardProps {
   playNote: (toneNote: string, duration?: number) => void;
   playError: () => void;
   suppressMic: (ms?: number) => void;
+  /**
+   * L'ultima rilevazione del microfono già usata come risposta (la tiene chi
+   * mostra le carte): non deve valere anche per la carta dopo.
+   */
+  usedMicIdRef: { current: number };
 }
 
 // Le pause fra una domanda e l'altra. Ora che il responso non è più un riquadro
@@ -98,6 +103,7 @@ export function PracticeCard({
   playNote,
   playError,
   suppressMic,
+  usedMicIdRef,
   warning,
 }: PracticeCardProps) {
   const [state, setState] = useState<AnswerState>('idle');
@@ -202,14 +208,18 @@ export function PracticeCard({
     // passaggio finiva ignorata e bisognava ribatterla. Se al montaggio la
     // rilevazione in sospeso è freschissima è stata suonata per QUESTA carta e
     // non va sbarrata; se è più vecchia è la nota di prima che risuona ancora.
+    // Mai però quella che ha appena risposto alla carta di prima: il passaggio
+    // dura meno di HANDOVER_MS, e la stessa nota rispondeva due volte (giusta,
+    // poi sbagliata alla carta nuova).
     if (!mountedRef.current) {
       mountedRef.current = true;
-      if (confirmedNote && Date.now() - confirmedNote.at < HANDOVER_MS) {
+      if (confirmedNote && confirmedNote.id > usedMicIdRef.current && Date.now() - confirmedNote.at < HANDOVER_MS) {
         micBaselineRef.current = confirmedNote.id - 1;
       }
     }
     if (!micActive || !confirmedNote || stateRef.current !== 'idle') return;
-    if (confirmedNote.id <= micBaselineRef.current) return;
+    if (confirmedNote.id <= micBaselineRef.current || confirmedNote.id <= usedMicIdRef.current) return;
+    usedMicIdRef.current = confirmedNote.id;
     submit(`${confirmedNote.note.name}${confirmedNote.note.octave}`, true);
   }, [confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
