@@ -187,7 +187,7 @@ export default function App() {
               <PieceView
                 progress={progress}
                 audio={audio}
-                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, suppress: pitch.suppress, expect: pitch.expect, chordMatch: pitch.chordMatch }}
+                mic={{ isListening: pitch.isListening, confirmedNote: pitch.confirmedNote, liveNote: pitch.liveNote, level: pitch.level, suppress: pitch.suppress, expect: pitch.expect, chordMatch: pitch.chordMatch }}
                 notify={notify}
                 section={songSection}
                 onSection={setSongSection}

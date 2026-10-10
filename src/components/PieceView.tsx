@@ -53,7 +53,9 @@ interface PieceViewProps {
   audio: AudioApi;
   mic: {
     isListening: boolean;
-    confirmedNote: { note: LiveNote; id: number } | null;
+    confirmedNote: { note: LiveNote; id: number; onsetAt?: number } | null;
+    liveNote: LiveNote | null;
+    level: number;
     suppress: (ms?: number) => void;
     expect: (notes: number[] | null, token?: string) => void;
     chordMatch: ChordMatch | null;
@@ -323,15 +325,36 @@ function PieceChallenge({
   // Microfono: l'app dice quali note aspetta, e il microfono le cerca tutte
   // insieme. Dal microfono non arrivano errori: una nota "sentita male" non
   // deve diventare uno sbaglio mai fatto.
+  // Mentre questa mano ha una pausa o una nota legata, i passi scorrono da
+  // soli; il microfono intanto aspetta già il prossimo passo in cui suoni: chi
+  // suona a tempo non deve aspettare che le pause finiscano di scorrere.
+  const waitIdx = useMemo(() => {
+    for (let j = idx; j < part.to; j++) if (requiredNotes(piece.steps, j, hand).length > 0) return j;
+    return -1;
+  }, [idx, part.to, piece.steps, hand]);
+  const waitRequired = useMemo(() => (waitIdx < 0 ? [] : requiredNotes(piece.steps, waitIdx, hand)), [waitIdx, piece.steps, hand]);
+
   const expect = mic.expect;
   useEffect(() => {
-    expect(mic.isListening && !done ? required.map(midiOf) : null, `${idx}-${hand}`);
-  }, [expect, mic.isListening, done, required, idx, hand]);
+    expect(mic.isListening && !done && waitIdx >= 0 ? waitRequired.map(midiOf) : null, `${waitIdx}-${hand}`);
+  }, [expect, mic.isListening, done, waitIdx, waitRequired, hand]);
   useEffect(() => () => expect(null), [expect]);
+
+  /** Note arrivate per un passo più avanti (dopo pause o legature): si va lì e si contano. */
+  const pendingRef = useRef<{ at: number; midis: number[] } | null>(null);
 
   const acceptFromMic = useCallback(
     (midis: number[]) => {
-      if (done || !step) return;
+      if (done || !step || midis.length === 0) return;
+      if (waitIdx > idx) {
+        if (!waitRequired.some(n => midis.includes(midiOf(n)))) return;
+        const updated = [...results];
+        for (let j = idx; j < waitIdx; j++) updated[j] = 'correct';
+        setResults(updated);
+        pendingRef.current = { at: waitIdx, midis };
+        goToStep(waitIdx, updated);
+        return;
+      }
       const targets = missing.filter(n => midis.includes(midiOf(n)));
       if (targets.length === 0) return;
       const nextFound = [...found, ...targets];
@@ -340,8 +363,15 @@ function PieceChallenge({
       haptics.tap();
       if (nextFound.length >= required.length) completeStep();
     },
-    [done, step, missing, found, required.length, completeStep],
+    [done, step, waitIdx, idx, waitRequired, results, goToStep, missing, found, required.length, completeStep],
   );
+
+  useEffect(() => {
+    const pending = pendingRef.current;
+    if (!pending || pending.at !== idx) return;
+    pendingRef.current = null;
+    acceptFromMic(pending.midis);
+  }, [idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const m = mic.chordMatch;
@@ -349,6 +379,22 @@ function PieceChallenge({
     micBaseRef.current = m.id;
     acceptFromMic(m.midis);
   }, [mic.chordMatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // E l'ascolto di una nota alla volta, insieme: se una delle due la sente,
+  // la nota giusta vale (l'ottava si perdona). Le altre non contano.
+  const monoBaseRef = useRef(mic.confirmedNote?.id ?? 0);
+  // La conferma in ritardo della nota di prima non vale per il passo dopo.
+  const stepSinceRef = useRef(0);
+  useEffect(() => { stepSinceRef.current = Date.now(); }, [idx, hand]);
+  useEffect(() => {
+    const c = mic.confirmedNote;
+    if (!mic.isListening || !c || c.id <= monoBaseRef.current) return;
+    monoBaseRef.current = c.id;
+    if ((c.onsetAt ?? Date.now()) < stepSinceRef.current - 30) return;
+    const heard = midiOf(`${c.note.name}${c.note.octave}`);
+    const pool = waitIdx > idx ? waitRequired : missing;
+    acceptFromMic(pool.filter(n => (midiOf(n) - heard) % 12 === 0).slice(0, 1).map(midiOf));
+  }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Riparte dall'inizio della sezione corrente. */
   const reset = useCallback(

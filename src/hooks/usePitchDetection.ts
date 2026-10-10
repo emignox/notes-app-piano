@@ -149,6 +149,7 @@ export function usePitchDetection() {
       const matcher = new ChordMatcher(audioCtx.sampleRate, SPECTRUM_FFT);
       matcherRef.current = matcher;
       matcher.block(400, Date.now());
+      let matcherBroken = false;
 
       tracker.reset();
       setIsListening(true);
@@ -167,25 +168,34 @@ export function usePitchDetection() {
         // I campioni grezzi servono a datare l'attacco dentro la finestra.
         const out = tracker.feed(rms, pitch, clarity, now, input, audioCtx.sampleRate);
 
-        // Brani: le note attese sono arrivate?
-        specAnalyser.getFloatFrequencyData(spectrum);
-        const attacks = matcher.feed(spectrum, now);
-        // Solo in sviluppo: gli attacchi sentiti, per le prove automatiche.
-        if (import.meta.env.DEV && attacks.length) {
-          const w = window as unknown as { __attacks?: { midi: number; at: number }[] };
-          (w.__attacks ??= []).push(...attacks.map(a => ({ midi: a.midi, at: a.at })));
-        }
-        const ex = expectRef.current;
-        if (ex) {
-          matcher.expect(ex.notes.filter(n => !ex.got.has(n)));
-          const got = matcher.matched(ex.notes, ex.since).filter(n => !ex.got.has(n));
-          if (got.length) {
-            got.forEach(n => ex.got.add(n));
-            if (ex.notes.every(n => ex.got.has(n))) matcher.consume(ex.notes, now);
-            setChordMatch({ midis: got, id: ++matchIdRef.current });
+        // Brani: le note attese sono arrivate? Qualunque cosa succeda qui,
+        // l'ascolto di una nota alla volta deve continuare: un errore spegne
+        // solo l'ascolto degli accordi.
+        if (!matcherBroken) {
+          try {
+            specAnalyser.getFloatFrequencyData(spectrum);
+            const attacks = matcher.feed(spectrum, now);
+            // Solo in sviluppo: gli attacchi sentiti, per le prove automatiche.
+            if (import.meta.env.DEV && attacks.length) {
+              const w = window as unknown as { __attacks?: { midi: number; at: number }[] };
+              (w.__attacks ??= []).push(...attacks.map(a => ({ midi: a.midi, at: a.at })));
+            }
+            const ex = expectRef.current;
+            if (ex) {
+              matcher.expect(ex.notes.filter(n => !ex.got.has(n)));
+              const got = matcher.matched(ex.notes, ex.since).filter(n => !ex.got.has(n));
+              if (got.length) {
+                got.forEach(n => ex.got.add(n));
+                if (ex.notes.every(n => ex.got.has(n))) matcher.consume(ex.notes, now);
+                setChordMatch({ midis: got, id: ++matchIdRef.current });
+              }
+            } else {
+              matcher.expect([]);
+            }
+          } catch (err) {
+            matcherBroken = true;
+            console.error('Ascolto degli accordi disattivato:', err);
           }
-        } else {
-          matcher.expect([]);
         }
 
         if (out.confirmed !== null) {

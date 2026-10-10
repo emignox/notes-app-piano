@@ -26,7 +26,7 @@ import { PORTRAIT } from '../../data/images';
 import { pieceToMusicXml } from '../../lib/pieceToMusicXml';
 import type { AudioApi } from '../../hooks/useAudio';
 import type { ProgressApi } from '../../hooks/useProgress';
-import type { ChordMatch } from '../../hooks/usePitchDetection';
+import type { ChordMatch, LiveNote } from '../../hooks/usePitchDetection';
 import { haptics } from '../../lib/haptics';
 import { Cascade } from './Cascade';
 import type { FallingNote } from './Cascade';
@@ -37,8 +37,15 @@ interface MicApi {
   isListening: boolean;
   expect: (notes: number[] | null, token?: string) => void;
   chordMatch: ChordMatch | null;
+  /** L'ascolto di una nota alla volta: vale insieme a quello degli accordi. */
+  confirmedNote: { note: LiveNote; id: number; onsetAt?: number } | null;
+  liveNote: LiveNote | null;
+  level: number;
   suppress: (ms?: number) => void;
 }
+
+const NOTE_INDEX: Record<string, number> = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
+const liveMidi = (n: LiveNote) => (n.octave + 1) * 12 + (NOTE_INDEX[n.name] ?? 0);
 
 interface Props {
   entry: LibraryEntry;
@@ -399,13 +406,13 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     [hand, steps, spb, audio],
   );
 
-  const completeStep = useCallback(() => {
+  const completeStep = useCallback((at: number = idx) => {
     const p = practice.current;
     p.total += 1;
     if (p.stepError) p.errors += 1;
     p.stepError = false;
-    const next = nextRequired(idx + 1);
-    accompany(idx, next < 0 ? range[1] : next);
+    const next = nextRequired(at + 1);
+    accompany(at, next < 0 ? range[1] : next);
     setFound([]);
     if (next < 0) {
       const pct = p.total ? Math.round(((p.total - p.errors) / p.total) * 100) : 0;
@@ -419,19 +426,39 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     setIdx(next);
   }, [idx, nextRequired, accompany, range, audio, progress, entry.id]);
 
+  /**
+   * Dove il microfono aspetta le note: esercitandosi, il passo corrente; da
+   * fermi, col microfono acceso, il prossimo passo da suonare — appena lo
+   * suoni il Leggio parte e ti segue, senza bisogno di premere Esercita.
+   */
+  const waitingAt = mode === 'practice' ? idx : mode === 'idle' && mic.isListening && !loading ? nextRequired(idx) : -1;
+  /** Da quando si aspetta quel passo (le note sentite prima non valgono). */
+  const waitSince = useRef(0);
+  useEffect(() => { waitSince.current = Date.now(); }, [waitingAt, mode]);
+
   /** Note giuste arrivate dal microfono, anche più insieme (un accordo). */
   const accept = useCallback(
     (midis: number[]) => {
-      if (mode !== 'practice') return;
-      const need = required(idx);
-      const fresh = midis.filter(m => need.includes(m) && !found.includes(m));
+      if (waitingAt < 0) return;
+      const at = waitingAt;
+      const need = required(at);
+      const base = mode === 'practice' ? found : [];
+      const fresh = midis.filter(m => need.includes(m) && !base.includes(m));
       if (fresh.length === 0) return;
-      const now = [...found, ...fresh];
+      if (mode === 'idle') {
+        // Hai cominciato a suonare: il Leggio ti segue da qui.
+        stopAll();
+        practice.current = { errors: 0, total: 0, stepError: false, startedAt: performance.now() };
+        setResult(null);
+        setIdx(at);
+        setMode('practice');
+      }
+      const now = [...base, ...fresh];
       setFound(now);
       haptics.correct();
-      if (need.every(m => now.includes(m))) completeStep();
+      if (need.every(m => now.includes(m))) completeStep(at);
     },
-    [mode, required, idx, found, completeStep],
+    [waitingAt, mode, required, found, completeStep, stopAll],
   );
 
   /** Un tasto toccato sullo schermo: giusto, o sbagliato (rosso). */
@@ -470,8 +497,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   // arrivano errori: una nota sentita male non deve diventare uno sbaglio.
   const expect = mic.expect;
   useEffect(() => {
-    expect(mode === 'practice' && mic.isListening ? required(idx) : null, `${idx}`);
-  }, [expect, mode, mic.isListening, required, idx]);
+    expect(waitingAt >= 0 && mic.isListening ? required(waitingAt) : null, `${mode}-${waitingAt}`);
+  }, [expect, waitingAt, mode, mic.isListening, required]);
   useEffect(() => () => expect(null), [expect]);
 
   useEffect(() => {
@@ -480,6 +507,21 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     micBase.current = m.id;
     accept(m.midis);
   }, [mic.chordMatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Anche l'ascolto di una nota alla volta: se lui la sente e l'altro no, la
+  // nota giusta vale lo stesso (anche all'ottava). Solo se suonata DOPO
+  // l'inizio dell'attesa: la conferma in ritardo della nota di prima non deve
+  // valere per il passo dopo.
+  const monoBase = useRef(mic.confirmedNote?.id ?? 0);
+  useEffect(() => {
+    const c = mic.confirmedNote;
+    if (!mic.isListening || !c || c.id <= monoBase.current) return;
+    monoBase.current = c.id;
+    if (waitingAt < 0 || (c.onsetAt ?? Date.now()) < waitSince.current - 30) return;
+    const heard = liveMidi(c.note);
+    const need = required(waitingAt);
+    accept(need.includes(heard) ? [heard] : need.filter(m => Math.abs(m - heard) === 12).slice(0, 1));
+  }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Note accese sul rigo e scorrimento ────────────────────────────────────
   useEffect(() => {
@@ -632,7 +674,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
 
   // ── Interfaccia ───────────────────────────────────────────────────────────
   const measureNow = (steps[idx]?.measure ?? 0) + 1;
-  const need = mode === 'practice' ? required(idx) : [];
+  const need = waitingAt >= 0 ? required(waitingAt) : [];
   const showScore = view !== 'cascata';
   const showCascade = view !== 'spartito';
 
@@ -670,6 +712,18 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             {mic.isListening ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
             {mic.isListening && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400" />}
           </button>
+        )}
+        {mic.isListening && (
+          // Cosa sente il microfono: il volume e la nota. Se resta tutto
+          // fermo mentre suoni, il telefono non sta ascoltando.
+          <div className="flex w-12 flex-none flex-col items-center gap-0.5" title="Quello che sente il microfono">
+            <div className="flex h-3 items-end gap-0.5">
+              {[0.08, 0.2, 0.4, 0.65, 0.9].map((t, i) => (
+                <span key={i} className={`w-1 rounded-sm ${mic.level >= t ? 'bg-emerald-400' : 'bg-white/15'}`} style={{ height: `${4 + i * 2}px` }} />
+              ))}
+            </div>
+            <span className="text-[10px] font-semibold leading-none text-ink3">{mic.liveNote ? midiName(liveMidi(mic.liveNote)) : '…'}</span>
+          </div>
         )}
         <div className="flex overflow-hidden rounded-xl border border-line text-[11px] font-bold sm:text-xs">
           {(['spartito', 'entrambi', 'cascata'] as View[]).map(v => (
@@ -756,12 +810,13 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             Non riesco a caricare la partitura.
           </div>
         )}
-        {mode === 'practice' && need.length > 0 && (
+        {need.length > 0 && (
           <div
             className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-slate-900/90 px-4 py-1.5 text-sm font-black text-white shadow-lg ring-1 ring-white/10 sm:text-base"
             style={{ top: showCascade && showScore ? 'calc(58% + 8px)' : showScore ? undefined : '8px', bottom: showCascade ? undefined : '8px' }}
           >
-            Suona: {[...need].sort((a, b) => a - b).map(m => stepNames.get(m) ?? midiName(m)).join(' + ')}
+            {mode === 'idle' ? '🎤 Suona per cominciare: ' : 'Suona: '}
+            {[...need].sort((a, b) => a - b).map(m => (waitingAt === idx ? stepNames.get(m) : undefined) ?? midiName(m)).join(' + ')}
           </div>
         )}
         {mode === 'done' && result && (
