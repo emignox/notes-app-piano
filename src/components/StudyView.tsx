@@ -30,7 +30,7 @@ import {
 } from '../lib/harmony';
 import type { ChordQuality } from '../lib/harmony';
 import { keyInfo, signatureText, diatonicChords } from '../lib/keys';
-import { METERS, VALUES, valueById, dotted } from '../lib/rhythm';
+import { METERS, VALUES, beatsLabel, valueById, dotted } from '../lib/rhythm';
 import { diatonicOf, englishOf, isOnLine, italianOf, landmarkHint, midiOf, noteEntry, parseNote, samePitchClass } from '../lib/notes';
 import { haptics } from '../lib/haptics';
 import { Bar, Btn, Card, ImageCover, PageHeader, Panel, Pill, Segmented, SectionTitle, Section as UiSection } from './ui';
@@ -223,15 +223,9 @@ function questionOf(ex: Exercise): Question | null {
     case 'value-beats': {
       const v = valueById(ex.id);
       const beats = dotted(v.beats, ex.dots ?? 0);
-      // Le durate non intere si dicono a parole: "un movimento e mezzo", non "1.5".
-      const label = (n: number) => {
-        if (n === 0.25) return 'un quarto di movimento';
-        if (n === 0.5) return 'mezzo movimento';
-        if (n === 0.75) return 'tre quarti di movimento';
-        if (n === 1) return '1 movimento';
-        if (n === 1.5) return '1 movimento e mezzo';
-        return Number.isInteger(n) ? `${n} movimenti` : `${Math.floor(n)} movimenti e mezzo`;
-      };
+      // Le durate si dicono a parole, anche nelle risposte sbagliate (il doppio,
+      // la metà, uno in più): "tre ottavi di movimento", non "0.375".
+      const label = beatsLabel;
       return {
         prompt: `Quanto vale una ${v.name.toLowerCase()}${ex.dots ? ' puntata' : ''}?`,
         choices: shuffle(
@@ -819,7 +813,7 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
                 <div key={v.id} className="rounded-xl border border-line bg-surface p-3">
                   <div className="flex items-baseline justify-between">
                     <span className="text-sm font-bold text-ink">{v.name}</span>
-                    <span className="text-xs text-ink3">{v.beats} {v.beats === 1 ? 'movimento' : 'movimenti'}</span>
+                    <span className="text-xs text-ink3">{beatsLabel(v.beats)}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-ink2">{v.drawing}</p>
                   <p className="text-xs text-ink3">Pausa: {v.restDrawing}</p>

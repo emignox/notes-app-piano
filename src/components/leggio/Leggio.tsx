@@ -396,12 +396,16 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   // Lo stesso per `audio`: è un oggetto nuovo a ogni disegno dell'app, la sua
   // funzione per fermare invece è sempre quella.
   const stopSequence = audio.stopSequence;
+  const startMetronome = audio.startMetronome;
+  const stopMetronome = audio.stopMetronome;
+  const metronome = progress.data.settings.metronome;
   const stopAll = useCallback(() => {
     stopSequence();
+    stopMetronome();
     timers.current.forEach(clearTimeout);
     timers.current = [];
     release();
-  }, [stopSequence, release]);
+  }, [stopSequence, stopMetronome, release]);
   useEffect(() => () => stopAll(), [stopAll]);
 
   // ── Ascolta ───────────────────────────────────────────────────────────────
@@ -438,6 +442,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     setMode('listen');
     setIdx(a);
     audio.playPerformance(events, times, i => setIdx(a + i), () => {
+      stopMetronome();
       // Con una zona si ricomincia da capo finché non si mette in pausa.
       if (zoneRef.current && modeRef.current === 'listen') {
         timers.current.push(setTimeout(() => { if (modeRef.current === 'listen') void listenRef.current?.(); }, 400));
@@ -446,7 +451,13 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         setMode(m => (m === 'listen' ? 'idle' : m));
       }
     });
-  }, [audio, stopAll, startFrom, range, steps, hand, spb, mic]);
+    // Il metronomo (Opzioni): parte col primo suono (la musica comincia 120 ms
+    // dopo) e sul primo battito intero, anche se si riparte da metà battito.
+    if (metronome) {
+      const lead = 120 + (Math.ceil(t0 - 1e-6) - t0) * spb * 1000;
+      timers.current.push(setTimeout(() => { if (modeRef.current === 'listen') startMetronome(60 / spb); }, lead));
+    }
+  }, [audio, stopAll, startFrom, range, steps, hand, spb, mic, metronome, startMetronome, stopMetronome]);
   useEffect(() => { listenRef.current = listen; zoneRef.current = zone; modeRef.current = mode; });
 
   // ── Esercita ──────────────────────────────────────────────────────────────

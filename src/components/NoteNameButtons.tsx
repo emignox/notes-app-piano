@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { NameStyle } from '../lib/notes';
-import { IT_NAMES, parseNote } from '../lib/notes';
+import { IT_NAMES, accSymbol, parseNote } from '../lib/notes';
 
 interface NoteNameButtonsProps {
   onSelect: (noteName: string) => void;
@@ -38,6 +38,10 @@ export function NoteNameButtons({
   const correctLetter = correct ? parseNote(correct).letter : null;
   const pickedLetter = picked ? parseNote(picked).letter : null;
   const revealing = correct !== null;
+  // Lettera giusta ma alterazione sbagliata (Fa invece di Fa♯): non è verde.
+  const wrongAccidental =
+    revealing && picked !== null && pickedLetter === correctLetter && parseNote(picked).acc !== parseNote(correct).acc;
+  const correctSymbol = correct ? accSymbol(parseNote(correct).acc) : '';
 
   const suffix = mode === 'sharp' ? '♯' : mode === 'flat' ? '♭' : '';
 
@@ -69,13 +73,18 @@ export function NoteNameButtons({
 
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
         {LETTERS.map(letter => {
-          const isCorrect = revealing && correctLetter === letter;
+          const isAnswer = revealing && correctLetter === letter;
+          const isCorrect = isAnswer && !wrongAccidental;
           const isWrongPick = revealing && pickedLetter === letter && correctLetter !== letter;
           const tone = isCorrect
             ? 'bg-emerald-600 text-white ring-2 ring-emerald-300'
+            : isAnswer
+            ? 'bg-amber-600 text-white ring-2 ring-amber-300'
             : isWrongPick
             ? 'bg-red-600 text-white'
             : 'bg-brand text-white';
+          // Nel responso, sul tasto giusto anche l'alterazione giusta.
+          const shown = isAnswer ? correctSymbol : suffix;
           return (
             <button
               key={letter}
@@ -86,7 +95,7 @@ export function NoteNameButtons({
             >
               <span className="text-base leading-none">
                 {style === 'en' ? letter : IT_NAMES[letter]}
-                {suffix && <span className="ml-0.5 text-xs text-amber-200">{suffix}</span>}
+                {shown && <span className="ml-0.5 text-xs text-amber-200">{shown}</span>}
               </span>
               {style === 'both' && <span className="mt-0.5 text-[10px] opacity-70">{letter}</span>}
             </button>

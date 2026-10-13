@@ -31,6 +31,7 @@ import {
   parseNote,
   pitchClass,
   samePitchClass,
+  sameSpelling,
 } from '../lib/notes';
 import { haptics } from '../lib/haptics';
 import { Panel, Pill } from './ui';
@@ -162,7 +163,9 @@ export function PracticeCard({
       if (stateRef.current !== 'idle') return;
       const ms = performance.now() - startRef.current;
 
-      const samePc = samePitchClass(answer, note.englishName);
+      // Col tasto o suonando conta il tasto (e l'ottava, se richiesta); coi
+      // pulsanti dei nomi conta il nome scritto: Si♭, non La♯.
+      const samePc = checkOctave ? samePitchClass(answer, note.englishName) : sameSpelling(answer, note.englishName);
       const sameOctave = parseNote(answer).octave === parseNote(note.englishName).octave;
       const correct = samePc && (!checkOctave || !settings.strictOctave || sameOctave);
 

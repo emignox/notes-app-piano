@@ -95,7 +95,12 @@ export function s(duration: StepDuration, treble?: Voice, bass?: Voice, m: Marks
  */
 export function rep(times: number, ...steps: PieceStep[]): PieceStep[] {
   const out: PieceStep[] = [];
-  for (let i = 0; i < times; i++) out.push(...steps.map(st => ({ ...st })));
+  for (let i = 0; i < times; i++) {
+    // La stanghetta finale vale solo per l'ultima volta: nelle copie prima
+    // diventa doppia, altrimenti il pezzo "finisce" a metà.
+    const last = i === times - 1;
+    out.push(...steps.map(st => (!last && st.bar === 'end' ? { ...st, bar: 'double' as const } : { ...st })));
+  }
   return out;
 }
 

@@ -130,6 +130,17 @@ export function sameNote(a: string, b: string): boolean {
   return midiOf(a) === midiOf(b);
 }
 
+/**
+ * Stesso NOME scritto, ottava a parte: lettera e alterazione. Chi risponde col
+ * nome deve leggere ciò che c'è sul rigo: un Si♭ non è un La♯, anche se il
+ * tasto è lo stesso. (Col tasto o suonando, invece, conta il tasto.)
+ */
+export function sameSpelling(a: string, b: string): boolean {
+  const x = parseNote(a);
+  const y = parseNote(b);
+  return x.letter === y.letter && x.acc === y.acc;
+}
+
 // ── Posizione sul pentagramma ────────────────────────────────────────────────
 
 /** Indice diatonico: conta solo i gradi della scala (le alterazioni non spostano la nota). */

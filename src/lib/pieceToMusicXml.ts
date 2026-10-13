@@ -222,7 +222,10 @@ export function pieceToMusicXml(piece: Piece): string {
     const bar = piece.steps[lastIdx]?.bar;
     if (bar === 'end' || mi === measures.length - 1) body += '<barline location="right"><bar-style>light-heavy</bar-style></barline>';
     else if (bar === 'double') body += '<barline location="right"><bar-style>light-light</bar-style></barline>';
-    else if (bar === 'repeat') body += '<barline location="right"><bar-style>light-heavy</bar-style><repeat direction="backward"/></barline>';
+    // I pezzi dell'app scrivono i ritornelli per esteso: un vero segno di
+    // ritornello farebbe ripetere al Leggio (ascolto ed esercizio) una parte
+    // già ripetuta. Qui diventa una doppia stanghetta.
+    else if (bar === 'repeat') body += '<barline location="right"><bar-style>light-light</bar-style></barline>';
 
     return `<measure number="${m.number}"${m.pickup ? ' implicit="yes"' : ''}>${body}</measure>`;
   });

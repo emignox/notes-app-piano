@@ -188,14 +188,23 @@ function PieceChallenge({
   const total = part.to - part.from;
   const doneCount = Math.max(0, idx - part.from);
   const stopSequence = audio.stopSequence;
+  const stopMetronome = audio.stopMetronome;
+  const metronomeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Uscendo dallo studio il metronomo si ferma (un intervallo non si ferma da solo).
+  useEffect(() => () => {
+    if (metronomeTimer.current) clearTimeout(metronomeTimer.current);
+    stopMetronome();
+  }, [stopMetronome]);
 
   const release = mic.release;
   const stopListening = useCallback(() => {
     stopSequence();
+    if (metronomeTimer.current) clearTimeout(metronomeTimer.current);
+    stopMetronome();
     release();
     setPlaying(false);
     setPlayingIdx(null);
-  }, [stopSequence, release]);
+  }, [stopSequence, stopMetronome, release]);
 
   /**
    * L'ascolto usa l'esecuzione interpretata: legature, staccati, dinamiche e
@@ -226,10 +235,13 @@ function PieceChallenge({
         events,
         times,
         i => setPlayingIdx(from + i),
-        () => { mic.release(); setPlayingIdx(null); setPlaying(false); setPlayingWhole(false); },
+        () => { stopMetronome(); mic.release(); setPlayingIdx(null); setPlaying(false); setPlayingWhole(false); },
       );
+      // Il metronomo (Opzioni): parte col primo suono, che arriva 120 ms dopo.
+      if (metronomeTimer.current) clearTimeout(metronomeTimer.current);
+      if (progress.data.settings.metronome) metronomeTimer.current = setTimeout(() => audio.startMetronome(bpm), 120);
     },
-    [piece, bpm, part.from, part.to, audio, mic],
+    [piece, bpm, part.from, part.to, audio, mic, progress.data.settings.metronome, stopMetronome],
   );
 
   const finish = useCallback(

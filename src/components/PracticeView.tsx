@@ -259,11 +259,19 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
   const currentNote = current ? noteById(current.noteId) : undefined;
 
   // La tastiera mostra l'ottava della nota (due se serve indovinare anche quella):
-  // tasti grandi e sempre nella stessa posizione.
+  // tasti grandi e sempre nella stessa posizione. Con due ottave la nota sta a
+  // volte in quella di sinistra, a volte in quella di destra: se fosse sempre a
+  // sinistra, l'ottava si indovinerebbe senza leggerla. La scelta dipende dalla
+  // carta, così non cambia mentre si risponde.
   const range = useMemo(() => {
     const oct = parseNote(currentNote?.englishName ?? newestNote?.englishName ?? 'C4').octave;
-    return { from: `C${oct}`, to: `B${oct + (settings.strictOctave ? 1 : 0)}` };
-  }, [currentNote, newestNote, settings.strictOctave]);
+    if (!settings.strictOctave) return { from: `C${oct}`, to: `B${oct}` };
+    const key = `${current?.noteId ?? ''}#${pos}`;
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+    const low = (h & 1) === 0 ? oct : oct - 1;
+    return { from: `C${low}`, to: `B${low + 1}` };
+  }, [current, pos, currentNote, newestNote, settings.strictOctave]);
 
   // ── Il piano di oggi ──────────────────────────────────────────────────────
   const learned = useMemo(() => unlockedNotes.map(n => n.toneNote), [unlockedNotes]);
@@ -332,8 +340,11 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       });
     }
 
+    // Il record di una melodia: le melodie si suonano nel Leggio, che lo salva
+    // come "leggio:melodia-<id>"; la vecchia lettura lo salvava con l'id.
+    const best = (id: string) => Math.max(data.melodyBest[id] ?? 0, data.melodyBest[`leggio:melodia-${id}`] ?? 0);
     const song = melodies.find(
-      m => m.requiredToneNotes.every(t => learned.includes(t)) && (data.melodyBest[m.id] ?? 0) < 100,
+      m => m.requiredToneNotes.every(t => learned.includes(t)) && best(m.id) < 100,
     );
     steps.push(
       song
@@ -341,8 +352,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
             key: 'musica',
             icon: Music,
             title: `Suona: ${song.title}`,
-            detail: (data.melodyBest[song.id] ?? 0) > 0
-              ? `record ${data.melodyBest[song.id]}%: punta al 100%`
+            detail: best(song.id) > 0
+              ? `record ${best(song.id)}%: punta al 100%`
               : `${song.notes.length} note, tutte fra quelle che sai leggere`,
             done: (today.songs ?? 0) > 0,
             action: { kind: 'go', tab: 'melody', intent: { melodyId: song.id } },

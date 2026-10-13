@@ -178,19 +178,6 @@ const complete: LibraryEntry[] = [
     credit: ASAP,
   },
   {
-    id: 'schumann-arabeske',
-    title: 'Arabeske',
-    subtitle: 'op. 18, in do maggiore',
-    composer: 'R. Schumann',
-    level: 4,
-    bpm: 126,
-    startRate: 0.5,
-    about: 'Un ricamo leggero e affettuoso ("Leicht und zart"): la melodia si nasconde dentro gli arpeggi e va fatta emergere. Due episodi minori e una coda sognante.',
-    focus: ['leggerezza degli arpeggi', 'la melodia nascosta', 'i cambi di carattere fra le sezioni'],
-    source: xml('schumann-arabeske'),
-    credit: ASAP,
-  },
-  {
     id: 'chopin-preludio-op28-4',
     title: 'Preludio op. 28 n. 4',
     subtitle: 'in mi minore',
@@ -291,6 +278,7 @@ const complete: LibraryEntry[] = [
     startRate: 0.35,
     about: 'La sinistra in tempesta sotto gli accordi della destra. Da ascoltare e seguire, e da studiare a una mano, lentissimo, battuta per battuta.',
     source: xml('chopin-op10-12'),
+    credit: ASAP,
   },
   {
     id: 'chopin-op10-4-original',
@@ -302,6 +290,7 @@ const complete: LibraryEntry[] = [
     startRate: 0.35,
     about: 'Un moto perpetuo di sedicesimi che passa da una mano all\'altra. Lo si studia a gruppi di quattro note, a tempo dimezzato.',
     source: xml('chopin-op10-4'),
+    credit: ASAP,
   },
   {
     id: 'chopin-op66-original',
@@ -313,6 +302,7 @@ const complete: LibraryEntry[] = [
     startRate: 0.35,
     about: 'Arpeggi della sinistra contro sedicesimi della destra (quattro contro tre), poi un episodio cantabile famosissimo. Da seguire a tempo lento, mano per mano.',
     source: xml('chopin-op66'),
+    credit: PDMX,
   },
 ];
 

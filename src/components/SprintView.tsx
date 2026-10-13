@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Timer, Trophy } from 'lucide-react';
 import { pickOne } from '../lib/session';
-import { samePitchClass } from '../lib/notes';
+import { samePitchClass, sameSpelling } from '../lib/notes';
 import { haptics } from '../lib/haptics';
 import type { NoteEntry } from '../types';
 import type { ProgressApi } from '../hooks/useProgress';
@@ -114,11 +114,12 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
   }, [phase, stop]);
 
   const answer = useCallback(
-    (given: string) => {
+    (given: string, byName = true) => {
       if (phase !== 'running' || !note || lockRef.current) return;
       lockRef.current = true;
       const ms = performance.now() - askedAtRef.current;
-      const correct = samePitchClass(given, note.englishName);
+      // Coi nomi conta il nome scritto (Si♭, non La♯); suonando conta il tasto.
+      const correct = byName ? sameSpelling(given, note.englishName) : samePitchClass(given, note.englishName);
 
       progress.answer(note.id, 'read', correct, ms, false, given);
 
@@ -144,7 +145,7 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
     if (phase !== 'running' || !mic.isListening || !mic.confirmedNote) return;
     if (mic.confirmedNote.id <= micBaseRef.current) return;
     micBaseRef.current = mic.confirmedNote.id;
-    answer(mic.confirmedNote.note.name);
+    answer(mic.confirmedNote.note.name, false);
   }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (phase === 'setup') {

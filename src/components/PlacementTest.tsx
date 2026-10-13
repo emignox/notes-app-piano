@@ -13,7 +13,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { ArrowRight, GraduationCap } from 'lucide-react';
 import type { AnswerState, NoteEntry } from '../types';
 import { curriculum, stages } from '../data/curriculum';
-import { samePitchClass } from '../lib/notes';
+import { sameSpelling } from '../lib/notes';
 import { haptics } from '../lib/haptics';
 import { Btn, Card, Panel, Pill } from './ui';
 import { Staff } from './Staff';
@@ -109,7 +109,8 @@ export function PlacementTest({ onComplete }: { onComplete: (unlockedCount: numb
     (given: string | null) => {
       if (!current || state !== 'idle') return;
       const ms = performance.now() - askedAt.current;
-      const correct = given !== null && samePitchClass(given, current.englishName);
+      // Si risponde coi nomi: conta il nome scritto (Si♭, non La♯).
+      const correct = given !== null && sameSpelling(given, current.englishName);
       if (correct) haptics.correct(); else haptics.wrong();
       setState(correct ? 'correct' : 'wrong');
       setPicked(given);

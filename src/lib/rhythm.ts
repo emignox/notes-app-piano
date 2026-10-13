@@ -85,6 +85,24 @@ export const VALUES: NoteValue[] = [
 export const valueById = (id: ValueId): NoteValue => VALUES.find(v => v.id === id) ?? VALUES[2];
 
 /** Il punto aggiunge METÀ del valore: una minima puntata vale 2 + 1 = 3. */
+const FRACTION: Record<number, string> = {
+  0.125: 'un ottavo', 0.25: 'un quarto', 0.375: 'tre ottavi', 0.5: 'mezzo',
+  0.625: 'cinque ottavi', 0.75: 'tre quarti', 0.875: 'sette ottavi',
+};
+
+/**
+ * Una durata in movimenti, a parole: "mezzo movimento", "tre ottavi di
+ * movimento", "1 movimento e tre quarti", "3 movimenti". Mai "0.375" né "0
+ * movimenti e mezzo".
+ */
+export function beatsLabel(n: number): string {
+  const whole = Math.floor(n);
+  const part = FRACTION[n - whole];
+  if (whole === 0) return part === 'mezzo' ? 'mezzo movimento' : `${part ?? n} di movimento`;
+  const head = `${whole} ${whole === 1 ? 'movimento' : 'movimenti'}`;
+  return part ? `${head} e ${part}` : head;
+}
+
 export function dotted(beats: number, dots = 1): number {
   let total = beats;
   let add = beats;

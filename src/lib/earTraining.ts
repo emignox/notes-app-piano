@@ -33,7 +33,7 @@ export const EAR_DRILLS: EarDrill[] = [
     title: 'Intervalli',
     emoji: '↕️',
     why: 'La distanza fra due note: è con questa che si sente una melodia.',
-    levels: ['terza M, quinta, ottava', '+ terza m e quarta', '+ seconde e sesta M', '+ tritono e settima m, anche discendenti', 'tutti, anche suonati insieme'],
+    levels: ['terza M, quinta, ottava', '+ terza m e quarta', '+ seconda M e sesta M', '+ seconda m, tritono e settima m, anche discendenti', 'tutti, anche suonati insieme'],
   },
   {
     id: 'triadi',
@@ -198,7 +198,8 @@ function scaleQuestion(level: number): EarQuestion {
   const set = SCALE_SETS[Math.min(level, SCALE_SETS.length) - 1];
   const type = pick(set);
   const root = noteFromMidi(57 + Math.floor(Math.random() * 6));
-  const sound = (t: ScaleType): Sound => ({ kind: 'melodic', notes: [...buildScale(root, t), noteFromMidi(midiOf(root) + 12)], secs: 0.32 });
+  // buildScale chiude già con la tonica in cima: aggiungerla di nuovo la faceva suonare due volte.
+  const sound = (t: ScaleType): Sound => ({ kind: 'melodic', notes: buildScale(root, t), secs: 0.32 });
   const tips: Record<ScaleType, string> = {
     maggiore: 'Maggiore: la terza è alta, tutto sorride.',
     'minore naturale': 'Minore naturale: terza, sesta e settima basse; arriva in cima senza spinta.',

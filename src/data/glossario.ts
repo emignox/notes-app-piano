@@ -288,7 +288,8 @@ export const glossario: Term[] = [
   {
     id: 'settima di dominante',
     word: 'settima di dominante',
-    aka: ['accordo di dominante', 'settima'],
+    // Non "settima" da sola: in "settima maggiore/minore" portava qui per sbaglio.
+    aka: ['accordo di dominante'],
     short: 'Accordo maggiore con la settima minore: crea tensione e vuole risolvere.',
     long: 'Si costruisce sul quinto grado (in Do è Sol-Si-Re-Fa). Fra la terza e la settima si forma un tritono, l\'intervallo più instabile: è lui a chiedere la risoluzione sulla tonica. È il motore dell\'armonia tonale.',
     see: ['dominante', 'tritono', 'cadenza'],
@@ -426,7 +427,8 @@ export const glossario: Term[] = [
   {
     id: 'punto di valore',
     word: 'punto di valore',
-    aka: ['puntata', 'puntato', 'punto'],
+    // Non "punto" da solo: è anche il punto dello staccato.
+    aka: ['puntata', 'puntato'],
     short: 'Il punto dopo una nota ne aumenta la durata della metà.',
     long: 'Una minima vale 2 movimenti, puntata ne vale 3. Una semiminima puntata vale un movimento e mezzo. Un secondo punto aggiunge la metà del primo. Serve per ottenere durate che dimezzando non si otterrebbero.',
     see: ['movimento', 'legatura di valore'],
@@ -434,7 +436,8 @@ export const glossario: Term[] = [
   {
     id: 'legatura di valore',
     word: 'legatura di valore',
-    aka: ['legatura', 'legature'],
+    // Non "legatura" da sola: quella di frase (portamento) è un'altra cosa.
+    aka: ['legature di valore'],
     short: 'Archetto che unisce due note della stessa altezza: si suonano come una sola.',
     long: 'Le durate si sommano e la nota si tiene per tutto il tempo. Serve soprattutto quando una durata deve attraversare la stanghetta di battuta, dove non si potrebbe scrivere con una figura sola. Da non confondere con la legatura di portamento, che unisce note diverse e significa "suona legato".',
     see: ['punto di valore', 'battuta'],
@@ -468,7 +471,8 @@ export const glossario: Term[] = [
   {
     id: 'passaggio del pollice',
     word: 'passaggio del pollice',
-    aka: ['pollice sotto', 'passaggio'],
+    // Non "passaggio" da solo: "accordo di passaggio" non c'entra.
+    aka: ['pollice sotto'],
     short: 'Far scivolare il pollice sotto la mano per continuare la scala senza interruzioni.',
     long: 'È il movimento che permette di suonare più di cinque note di seguito. Va preparato in anticipo, ruotando leggermente il polso mentre le altre dita suonano: se lo si fa all\'ultimo momento si sente un buco nel suono.',
     see: ['diteggiatura'],
