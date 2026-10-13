@@ -30,7 +30,7 @@ import {
 import type { ArpeggioPattern } from '../lib/harmony';
 import { accidentalKind, fullLabel, italianOf, midiOf, parseNote, sameNote, samePitchClass, vexKeyOf } from '../lib/notes';
 import { haptics } from '../lib/haptics';
-import { arpeggioExercises, chordExercises, scaleExercises } from '../data/technique';
+import { CHORD_QUALITIES, arpeggioExercises, chordExercises, scaleExercises } from '../data/technique';
 import type { ArpeggioExercise, ChordExercise, ScaleExercise } from '../data/technique';
 import { Btn, Card, Panel, Pill, Segmented, SectionTitle } from './ui';
 import { useScrollTop } from '../hooks/useScrollTop';
@@ -301,22 +301,28 @@ function ScaleRunner({
   const [direction, setDirection] = useState<'salita' | 'discesa' | 'andata e ritorno'>('salita');
 
   // La sinistra suona un'ottava sotto: è lì che sta davvero, non sopra il Do centrale.
-  const base = useMemo(() => {
-    const root = hand === 'left' ? `${parseNote(ex.root).letter}${parseNote(ex.root).octave - 1}` : ex.root;
-    const { acc } = parseNote(ex.root);
-    return buildScale(`${parseNote(root).letter}${acc}${parseNote(root).octave}`, ex.type, 1);
+  const root = useMemo(() => {
+    const { letter, acc, octave } = parseNote(ex.root);
+    return `${letter}${acc}${hand === 'left' ? octave - 1 : octave}`;
   }, [ex, hand]);
+  const base = useMemo(() => buildScale(root, ex.type, 1), [root, ex]);
+  // La melodica scende come la naturale: note e dita.
+  const down = useMemo(
+    () => [...(ex.type === 'minore melodica' ? buildScale(root, 'minore naturale', 1) : base)].reverse(),
+    [root, ex, base],
+  );
 
   const notes = useMemo(() => {
-    if (direction === 'discesa') return [...base].reverse();
-    if (direction === 'andata e ritorno') return [...base, ...[...base].reverse().slice(1)];
+    if (direction === 'discesa') return down;
+    if (direction === 'andata e ritorno') return [...base, ...down.slice(1)];
     return base;
-  }, [base, direction]);
+  }, [base, down, direction]);
 
   const fingering = useMemo(() => {
     const one = hand === 'right' ? ex.rh : ex.lh;
-    if (direction === 'discesa') return [...one].reverse();
-    if (direction === 'andata e ritorno') return [...one, ...[...one].reverse().slice(1)];
+    const oneDown = [...((hand === 'right' ? ex.rhDown : ex.lhDown) ?? one)].reverse();
+    if (direction === 'discesa') return oneDown;
+    if (direction === 'andata e ritorno') return [...one, ...oneDown.slice(1)];
     return one;
   }, [ex, hand, direction]);
 
@@ -597,15 +603,70 @@ function Row({
   );
 }
 
+/** Una riga di filtri che scorre in orizzontale, come nella libreria. */
+function Chips<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string; count: number }[];
+}) {
+  return (
+    <div className="thin-scroll -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+      {options.map(o => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+            value === o.value ? 'border-ink bg-ink text-canvas' : 'border-line text-ink2'
+          }`}
+        >
+          {o.label} <span className="opacity-60">{o.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const SCALE_FILTERS: { value: ScaleExercise['type']; label: string }[] = [
+  { value: 'maggiore', label: 'Maggiori' },
+  { value: 'minore naturale', label: 'Minori naturali' },
+  { value: 'minore armonica', label: 'Minori armoniche' },
+  { value: 'minore melodica', label: 'Minori melodiche' },
+];
+
+type ArpFilter = 'maggiore' | 'minore' | 'settima';
+const ARP_FILTERS: { value: ArpFilter; label: string }[] = [
+  { value: 'maggiore', label: 'Maggiori' },
+  { value: 'minore', label: 'Minori' },
+  { value: 'settima', label: 'Settima' },
+];
+const arpKind = (ex: ArpeggioExercise): ArpFilter => (ex.quality === 'maggiore' || ex.quality === 'minore' ? ex.quality : 'settima');
+
+type ChordFilter = 'da studiare' | ChordExercise['quality'];
+const CHORD_FILTERS: { value: ChordFilter; label: string }[] = [
+  { value: 'da studiare', label: 'Da studiare' },
+  ...CHORD_QUALITIES.map(q => ({ value: q.quality, label: q.quality === 'settima di dominante' ? 'settima' : q.label })),
+];
+
 export function TechniqueView({ audio, mic }: TechniqueViewProps) {
   const [section, setSection] = useState<TechniqueSection>('scale');
   const [scale, setScale] = useState<ScaleExercise | null>(null);
   const [arp, setArp] = useState<ArpeggioExercise | null>(null);
   const [chord, setChord] = useState<ChordExercise | null>(null);
+  // Restano scelti tornando dall'esercizio all'elenco.
+  const [scaleType, setScaleType] = useState<ScaleExercise['type']>('maggiore');
+  const [arpType, setArpType] = useState<ArpFilter>('maggiore');
+  const [chordType, setChordType] = useState<ChordFilter>('da studiare');
 
   if (scale) return <ScaleRunner ex={scale} audio={audio} mic={mic} onBack={() => setScale(null)} />;
   if (arp) return <ArpeggioRunner ex={arp} audio={audio} mic={mic} onBack={() => setArp(null)} />;
   if (chord) return <ChordStudy ex={chord} audio={audio} mic={mic} onBack={() => setChord(null)} />;
+
+  const chordMatches = (ex: ChordExercise) => (chordType === 'da studiare' ? !!ex.starter : ex.quality === chordType);
 
   return (
     <div className="flex flex-col gap-3">
@@ -624,8 +685,13 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
           <SectionTitle hint="Con la diteggiatura standard: è quella il contenuto dell'esercizio">
             Scale
           </SectionTitle>
+          <Chips
+            value={scaleType}
+            onChange={setScaleType}
+            options={SCALE_FILTERS.map(f => ({ ...f, count: scaleExercises.filter(ex => ex.type === f.value).length }))}
+          />
           <div className="mt-2 flex flex-col gap-2">
-            {scaleExercises.map(ex => (
+            {scaleExercises.filter(ex => ex.type === scaleType).map(ex => (
               <Row
                 key={ex.id}
                 title={ex.title}
@@ -641,8 +707,13 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
       {section === 'arpeggi' && (
         <Card>
           <SectionTitle hint="Salita, discesa, su e giù, alternato">Arpeggi</SectionTitle>
+          <Chips
+            value={arpType}
+            onChange={setArpType}
+            options={ARP_FILTERS.map(f => ({ ...f, count: arpeggioExercises.filter(ex => arpKind(ex) === f.value).length }))}
+          />
           <div className="mt-2 flex flex-col gap-2">
-            {arpeggioExercises.map(ex => (
+            {arpeggioExercises.filter(ex => arpKind(ex) === arpType).map(ex => (
               <Row
                 key={ex.id}
                 title={ex.title}
@@ -657,9 +728,17 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
 
       {section === 'accordi' && (
         <Card>
-          <SectionTitle hint="Fondamentale e rivolti, spiegati">Accordi</SectionTitle>
+          <SectionTitle hint="Fondamentale e rivolti, su tutte e dodici le note">Accordi</SectionTitle>
+          <Chips
+            value={chordType}
+            onChange={setChordType}
+            options={CHORD_FILTERS.map(f => ({
+              ...f,
+              count: chordExercises.filter(ex => (f.value === 'da studiare' ? !!ex.starter : ex.quality === f.value)).length,
+            }))}
+          />
           <div className="mt-2 flex flex-col gap-2">
-            {chordExercises.map(ex => (
+            {chordExercises.filter(chordMatches).map(ex => (
               <Row
                 key={ex.id}
                 title={`${ex.title} · ${chordSymbol(ex.root, ex.quality)}`}
