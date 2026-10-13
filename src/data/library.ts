@@ -8,7 +8,9 @@
 //    ascoltare, seguire e studiare a pezzi nel Leggio.
 //
 // Le partiture complete scaricate dal dataset ASAP sono distribuite con
-// licenza CC BY-NC-SA 4.0: l'attribuzione compare nel Leggio.
+// licenza CC BY-NC-SA 4.0; quelle dal dataset PDMX sono partiture MuseScore
+// di pubblico dominio (CC0), scelte fra le più votate e ricontrollate.
+// L'attribuzione compare nel Leggio.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Melody, Piece, PieceStep } from '../types';
@@ -36,6 +38,7 @@ export interface LibraryEntry {
 }
 
 const ASAP = 'Partitura: ASAP dataset (Foscarin et al.), CC BY-NC-SA 4.0';
+const PDMX = 'Partitura: MuseScore, di pubblico dominio (CC0), dal dataset PDMX (Long et al.)';
 
 /** Colore della copertina: ogni compositore ha il suo. */
 export const COMPOSER_STYLE: Record<string, { from: string; to: string; emoji: string; short: string }> = {
@@ -185,6 +188,97 @@ const complete: LibraryEntry[] = [
     about: 'Un ricamo leggero e affettuoso ("Leicht und zart"): la melodia si nasconde dentro gli arpeggi e va fatta emergere. Due episodi minori e una coda sognante.',
     focus: ['leggerezza degli arpeggi', 'la melodia nascosta', 'i cambi di carattere fra le sezioni'],
     source: xml('schumann-arabeske'),
+    credit: ASAP,
+  },
+  {
+    id: 'chopin-preludio-op28-4',
+    title: 'Preludio op. 28 n. 4',
+    subtitle: 'in mi minore',
+    composer: 'F. Chopin',
+    level: 2,
+    bpm: 60,
+    startRate: 0.8,
+    about: 'Una melodia di poche note sopra accordi ribattuti che scendono di un semitono alla volta. Facile da leggere, difficile da far cantare: fu suonato al funerale di Chopin.',
+    focus: ['gli accordi della sinistra piano e legati', 'il canto che pesa sulle note lunghe', 'il crescendo fino allo "stretto"'],
+    source: xml('chopin-preludio-op28-4'),
+    credit: PDMX,
+  },
+  {
+    id: 'chopin-preludio-op28-15',
+    title: 'Preludio op. 28 n. 15 "Goccia d\'acqua"',
+    subtitle: 'in re bemolle maggiore',
+    composer: 'F. Chopin',
+    level: 3,
+    bpm: 66,
+    startRate: 0.7,
+    about: 'Il La bemolle ribattuto, come una goccia che cade, dall\'inizio alla fine. Un canto sereno, poi una parte centrale cupa in do diesis minore in cui la goccia diventa un rintocco.',
+    focus: ['la nota ribattuta sempre più piano del canto', 'il legato della melodia', 'il grande crescendo centrale senza picchiare'],
+    source: xml('chopin-preludio-op28-15'),
+    credit: PDMX,
+  },
+  {
+    id: 'chopin-valzer-op69-2',
+    title: 'Valzer op. 69 n. 2',
+    subtitle: 'in si minore (postumo)',
+    composer: 'F. Chopin',
+    level: 3,
+    bpm: 132,
+    startRate: 0.55,
+    about: 'Scritto a diciannove anni e pubblicato dopo la morte: malinconico, cantabile, con un Trio in si maggiore più luminoso. Il valzer giusto dopo quello in la minore.',
+    focus: ['il canto con le appoggiature', 'il basso del valzer morbido sul primo tempo', 'il Trio in maggiore, più leggero'],
+    source: xml('chopin-valzer-op69-2'),
+    credit: PDMX,
+  },
+  {
+    id: 'chopin-valzer-op64-2',
+    title: 'Valzer op. 64 n. 2',
+    subtitle: 'in do diesis minore',
+    composer: 'F. Chopin',
+    level: 4,
+    bpm: 160,
+    startRate: 0.45,
+    about: 'Uno dei valzer più amati: un tema malinconico, un "più mosso" che gira come una trottola e una parte centrale cantabile in re bemolle. Il tema e il più mosso tornano, e il valzer svanisce.',
+    focus: ['il tema cantato sopra il basso del valzer', 'il più mosso leggero e regolare', 'la sinistra: basso sul primo tempo, accordi leggeri'],
+    source: xml('chopin-valzer-op64-2'),
+    credit: PDMX,
+  },
+  {
+    id: 'chopin-notturno-do-diesis-postumo',
+    title: 'Notturno in do diesis minore',
+    subtitle: 'op. postuma (B. 49), "Lento con gran espressione"',
+    composer: 'F. Chopin',
+    level: 4,
+    bpm: 60,
+    startRate: 0.6,
+    about: 'Il notturno del film "Il pianista": un canto dolorosissimo sopra un accompagnamento che ondeggia, una parte centrale che cita il Secondo Concerto e le ultime scale velocissime, libere.',
+    focus: ['il canto sopra gli arpeggi della sinistra', 'le volate veloci, libere e non a tempo', 'il pianissimo della fine'],
+    source: xml('chopin-notturno-do-diesis-postumo'),
+    credit: PDMX,
+  },
+  {
+    id: 'chopin-valzer-op64-1',
+    title: 'Valzer op. 64 n. 1 "del minuto"',
+    subtitle: 'in re bemolle maggiore',
+    composer: 'F. Chopin',
+    level: 5,
+    bpm: 210,
+    startRate: 0.35,
+    about: 'Il "valzer del cagnolino" che si rincorre la coda: un giro di crome continuo nella destra. Non dura un minuto (ce ne vogliono quasi due), ma va leggerissimo.',
+    focus: ['il giro di crome piano e regolare', 'la sinistra leggera, mai pesante', 'la parte centrale cantabile'],
+    source: xml('chopin-valzer-op64-1'),
+    credit: PDMX,
+  },
+  {
+    id: 'chopin-ballata-1',
+    title: 'Ballata n. 1',
+    subtitle: 'op. 23, in sol minore',
+    composer: 'F. Chopin',
+    level: 5,
+    bpm: 120,
+    startRate: 0.4,
+    about: 'Una delle vette del pianoforte: un\'introduzione sospesa, il tema in sol minore che racconta, il secondo tema in mi bemolle, le loro trasformazioni e la coda "Presto con fuoco". Da ascoltare, seguire e studiare a pezzi.',
+    focus: ['il racconto del primo tema, senza fretta', 'il secondo tema cantato', 'la coda a mani separate, lentissima'],
+    source: xml('chopin-ballata-1'),
     credit: ASAP,
   },
   {
