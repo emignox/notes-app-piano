@@ -27,12 +27,17 @@ import {
   buildScale,
   chordSymbol,
   invert,
+  nameIn,
+  noteName,
 } from '../lib/harmony';
 import type { ChordQuality } from '../lib/harmony';
 import { keyInfo, signatureText, diatonicChords } from '../lib/keys';
+import { GENERIC_INTERVALS, INTERVAL_NAMES } from '../lib/earTraining';
 import { METERS, VALUES, beatsLabel, valueById, dotted } from '../lib/rhythm';
 import { diatonicOf, englishOf, isOnLine, italianOf, landmarkHint, midiOf, noteEntry, parseNote, samePitchClass } from '../lib/notes';
 import { haptics } from '../lib/haptics';
+import { localize, t, getLang } from '../i18n';
+import { LESSON_FIELDS } from '../i18n/sources/lessons';
 import { Bar, Btn, Card, ImageCover, PageHeader, Panel, Pill, Segmented, SectionTitle, Section as UiSection } from './ui';
 import { IMG } from '../data/images';
 import { useScrollTop } from '../hooks/useScrollTop';
@@ -74,6 +79,9 @@ type Section = 'lezioni' | 'tecnica' | 'ritmo' | 'orecchio' | 'glossario';
 
 const XP_PER_LESSON = 40;
 
+/** I campi di testo dei dati delle lezioni (titoli, spiegazioni, domande…): quelli che localize() traduce. */
+const LESSON_TEXT = new Set(LESSON_FIELDS);
+
 // ── Esercizi ────────────────────────────────────────────────────────────────
 
 interface Choice {
@@ -89,24 +97,6 @@ function shuffle<T>(items: T[]): T[] {
   }
   return out;
 }
-
-const INTERVAL_NAMES: Record<number, string> = {
-  1: 'seconda minore (1 semitono)',
-  2: 'seconda maggiore (2)',
-  3: 'terza minore (3)',
-  4: 'terza maggiore (4)',
-  5: 'quarta giusta (5)',
-  6: 'tritono (6)',
-  7: 'quinta giusta (7)',
-  8: 'sesta minore (8)',
-  9: 'sesta maggiore (9)',
-  10: 'settima minore (10)',
-  11: 'settima maggiore (11)',
-  12: 'ottava (12)',
-};
-
-/** Nomi degli intervalli contati sul pentagramma (lettere, non semitoni). */
-const GENERIC_INTERVALS = ['unisono', 'seconda', 'terza', 'quarta', 'quinta', 'sesta', 'settima', 'ottava'];
 
 interface Question {
   prompt: string;
@@ -137,27 +127,29 @@ function questionOf(ex: Exercise): Question | null {
       const size = Math.abs(diatonicOf(ex.to) - diatonicOf(ex.from));
       const near = [size - 2, size - 1, size + 1, size + 2].filter(n => n >= 1 && n <= 7);
       return {
-        prompt: 'Che intervallo c\'è fra le due note? Conta righe e spazi, non i tasti.',
+        prompt: t('Che intervallo c\'è fra le due note? Conta righe e spazi, non i tasti.'),
         choices: shuffle([
-          { label: GENERIC_INTERVALS[size], correct: true },
-          ...shuffle(near).slice(0, 3).map(n => ({ label: GENERIC_INTERVALS[n], correct: false })),
+          { label: t(GENERIC_INTERVALS[size]), correct: true },
+          ...shuffle(near).slice(0, 3).map(n => ({ label: t(GENERIC_INTERVALS[n]), correct: false })),
         ]),
         play: [ex.from, ex.to],
         show: { notes: [ex.from, ex.to], clef: ex.clef },
         explain: size === 1
-          ? 'Grado congiunto: da una linea allo spazio subito accanto (o viceversa).'
+          ? t('Grado congiunto: da una linea allo spazio subito accanto (o viceversa).')
           : size % 2 === 0
-            ? `Le due note stanno ${isOnLine(ex.from, ex.clef) ? 'entrambe su una linea' : 'entrambe in uno spazio'}: terze, quinte e settime si riconoscono così.`
-            : `Una nota su una linea e l'altra in uno spazio: seconde, quarte, seste e ottave si riconoscono così.`,
+            ? isOnLine(ex.from, ex.clef)
+              ? t('Le due note stanno entrambe su una linea: terze, quinte e settime si riconoscono così.')
+              : t('Le due note stanno entrambe in uno spazio: terze, quinte e settime si riconoscono così.')
+            : t('Una nota su una linea e l\'altra in uno spazio: seconde, quarte, seste e ottave si riconoscono così.'),
       };
     }
     case 'ear-scale': {
       const right = ex.options[Math.floor(Math.random() * ex.options.length)];
       return {
-        prompt: 'Che scala hai sentito?',
+        prompt: t('Che scala hai sentito?'),
         play: buildScale(ex.root, right),
-        choices: shuffle(ex.options.map(o => ({ label: o, correct: o === right }))),
-        explain: SCALE_EXPLAIN[right],
+        choices: shuffle(ex.options.map(o => ({ label: t(o), correct: o === right }))),
+        explain: t(SCALE_EXPLAIN[right]),
       };
     }
     case 'name-chord': {
@@ -173,7 +165,7 @@ function questionOf(ex: Exercise): Question | null {
       // accordo, altrimenti si indovina guardando solo la qualità.
       if (inv > 0) {
         return {
-          prompt: 'Che accordo è, e che nota ha al basso?',
+          prompt: t('Che accordo è, e che nota ha al basso?'),
           choices: shuffle([
             { label: withBass(inv), correct: true },
             ...chord.map((_, i) => i).filter(i => i !== inv).map(i => ({ label: withBass(i), correct: false })),
@@ -185,7 +177,7 @@ function questionOf(ex: Exercise): Question | null {
         .slice(0, 3)
         .map(q => chordSymbol(rootKey, q));
       return {
-        prompt: 'Che accordo è?',
+        prompt: t('Che accordo è?'),
         choices: shuffle([
           { label: base, correct: true },
           ...others.map(l => ({ label: l, correct: false })),
@@ -195,20 +187,20 @@ function questionOf(ex: Exercise): Question | null {
     case 'ear-interval': {
       const right = ex.semitones[Math.floor(Math.random() * ex.semitones.length)];
       return {
-        prompt: 'Che intervallo hai sentito?',
+        prompt: t('Che intervallo hai sentito?'),
         play: [ex.from, transpose(ex.from, right)],
         choices: shuffle(
-          ex.semitones.map(s => ({ label: INTERVAL_NAMES[s] ?? `${s} semitoni`, correct: s === right })),
+          ex.semitones.map(s => ({ label: INTERVAL_NAMES[s] ? t(INTERVAL_NAMES[s]) : t('{n} semitoni', { n: s }), correct: s === right })),
         ),
       };
     }
     case 'ear-chord': {
       const right = ex.options[Math.floor(Math.random() * ex.options.length)];
       return {
-        prompt: 'Che accordo hai sentito?',
+        prompt: t('Che accordo hai sentito?'),
         play: buildChord(ex.root, right),
         together: true,
-        choices: shuffle(ex.options.map(q => ({ label: q, correct: q === right }))),
+        choices: shuffle(ex.options.map(q => ({ label: t(q), correct: q === right }))),
       };
     }
     case 'value-name': {
@@ -216,8 +208,8 @@ function questionOf(ex: Exercise): Question | null {
       return {
         // Solo la prima frase: il resto della descrizione è un commento
         // didattico ("è il battito…") che qui suonerebbe fuori posto.
-        prompt: `Quale figura si disegna così: ${v.drawing.split('.')[0].toLowerCase()}?`,
-        choices: shuffle(VALUES.map(x => ({ label: x.name, correct: x.id === v.id }))),
+        prompt: t('Quale figura si disegna così: {desc}?', { desc: t(v.drawing).split('.')[0].toLowerCase() }),
+        choices: shuffle(VALUES.map(x => ({ label: t(x.name), correct: x.id === v.id }))),
       };
     }
     case 'value-beats': {
@@ -227,7 +219,9 @@ function questionOf(ex: Exercise): Question | null {
       // la metà, uno in più): "tre ottavi di movimento", non "0.375".
       const label = beatsLabel;
       return {
-        prompt: `Quanto vale una ${v.name.toLowerCase()}${ex.dots ? ' puntata' : ''}?`,
+        prompt: ex.dots
+          ? t('Quanto vale una {fig} puntata?', { fig: t(v.name).toLowerCase() })
+          : t('Quanto vale una {fig}?', { fig: t(v.name).toLowerCase() }),
         choices: shuffle(
           [beats, beats * 2, beats / 2, beats + 1]
             .filter((n, i, a) => a.indexOf(n) === i)
@@ -240,11 +234,11 @@ function questionOf(ex: Exercise): Question | null {
       const info = keyInfo(ex.tonic);
       const right = signatureText(info);
       const wrong = ['C', 'G', 'D', 'A', 'F', 'Bb', 'Eb']
-        .filter(t => t !== ex.tonic)
-        .map(t => signatureText(keyInfo(t)))
+        .filter(tonic => tonic !== ex.tonic)
+        .map(tonic => signatureText(keyInfo(tonic)))
         .filter(s => s !== right);
       return {
-        prompt: `Che armatura ha ${italianOf(ex.tonic)} maggiore?`,
+        prompt: t('Che armatura ha {tonica} maggiore?', { tonica: nameIn(italianOf(ex.tonic), true) }),
         choices: shuffle([
           { label: right, correct: true },
           ...shuffle(wrong).slice(0, 3).map(l => ({ label: l, correct: false })),
@@ -260,7 +254,7 @@ function questionOf(ex: Exercise): Question | null {
         .slice(0, 3)
         .map(c => ({ label: chordSymbol(`${c.root}4`, c.quality), correct: false }));
       return {
-        prompt: `In ${italianOf(ex.tonic)} maggiore, qual è il grado ${right.roman}?`,
+        prompt: t('In {tonica} maggiore, qual è il grado {grado}?', { tonica: nameIn(italianOf(ex.tonic), true), grado: right.roman }),
         choices: shuffle([
           { label: chordSymbol(`${right.root}4`, right.quality), correct: true },
           ...wrong,
@@ -299,15 +293,15 @@ function notesToPlay(ex: Exercise): string[] | null {
 function exerciseTitle(ex: Exercise): string {
   switch (ex.kind) {
     case 'build-chord':
-      return `Suona ${chordSymbol(ex.root, ex.quality)} — ${italianOf(ex.root)} ${ex.quality}`;
+      return t('Suona {simbolo} — {nota} {tipo}', { simbolo: chordSymbol(ex.root, ex.quality), nota: nameIn(italianOf(ex.root), true), tipo: t(ex.quality) });
     case 'build-scale':
-      return `Suona la scala di ${italianOf(ex.root)} ${ex.type}`;
+      return t('Suona la scala di {nota} {tipo}', { nota: nameIn(italianOf(ex.root), true), tipo: t(ex.type) });
     case 'build-mode':
-      return `Suona ${italianOf(ex.root)} ${ex.mode}`;
+      return t('Suona {nota} {modo}', { nota: nameIn(italianOf(ex.root), true), modo: t(ex.mode) });
     case 'build-other':
-      return `Suona la ${ex.scale} di ${italianOf(ex.root)}`;
+      return t('Suona la {scala} di {nota}', { scala: t(ex.scale), nota: nameIn(italianOf(ex.root), true) });
     default:
-      return 'Esercizio';
+      return t('Esercizio');
   }
 }
 
@@ -389,24 +383,24 @@ function ExerciseCard({
         <Panel className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-wider text-ink3">
-              {done ? 'completo' : `nota ${step + 1} di ${sequence.length}`}
+              {done ? t('completo') : t('nota {n} di {total}', { n: step + 1, total: sequence.length })}
             </p>
             <p className="text-xl font-black text-ink">
               {done
-                ? helped ? 'fatto' : 'giusto al primo colpo!'
-                : stepMistakes > 0 ? italianOf(target) : found.length ? `${found.map(f => italianOf(f)).join(' · ')} · ?` : '?'}
+                ? helped ? t('fatto') : t('giusto al primo colpo!')
+                : stepMistakes > 0 ? noteName(target) : found.length ? `${found.map(f => noteName(f)).join(' · ')} · ?` : '?'}
             </p>
             {!done && stepMistakes === 0 && (
-              <p className="text-[11px] text-ink3">ricavala dalla formula: niente aiuti al primo tentativo</p>
+              <p className="text-[11px] text-ink3">{t('ricavala dalla formula: niente aiuti al primo tentativo')}</p>
             )}
             {wrongKey && !done && (
-              <p className="text-[11px] text-red-400">{italianOf(wrongKey)} no — riprova</p>
+              <p className="text-[11px] text-red-400">{t('{nota} no — riprova', { nota: noteName(wrongKey) })}</p>
             )}
           </div>
           <Btn
             variant="soft"
             className="px-3 py-2"
-            title="Ascolta com'è (vale come aiuto)"
+            title={t('Ascolta com\'è (vale come aiuto)')}
             onClick={() => {
               if (step < sequence.length) {
                 mistakesRef.current += 1;
@@ -431,7 +425,7 @@ function ExerciseCard({
           />
         </Panel>
         <p className="text-center text-xs text-ink3">
-          {mic.isListening ? 'Suonale sul piano una alla volta, oppure tocca i tasti' : 'Tocca i tasti nell\'ordine'}
+          {mic.isListening ? t('Suonale sul piano una alla volta, oppure tocca i tasti') : t('Tocca i tasti nell\'ordine')}
         </p>
       </div>
     );
@@ -443,7 +437,7 @@ function ExerciseCard({
     const state = picked === null ? 'idle' : samePitchClass(picked, ex.note) ? 'correct' : 'wrong';
     return (
       <div className="space-y-3">
-        <p className="text-sm font-bold text-ink">Che nota è?</p>
+        <p className="text-sm font-bold text-ink">{t('Che nota è?')}</p>
         <Staff entries={[entry]} activeIndex={0} answerState={state} variant="focus" />
         <Panel className="p-2.5">
           <NoteNameButtons
@@ -496,7 +490,7 @@ function ExerciseCard({
       {question.play && (
         <Btn variant="soft" onClick={play} className="w-full justify-center">
           <Volume2 className="h-4 w-4" />
-          {picked ? 'Riascolta' : 'Ascolta'}
+          {picked ? t('Riascolta') : t('Ascolta')}
         </Btn>
       )}
 
@@ -535,11 +529,11 @@ function ExerciseCard({
       {chosen && (!chosen.correct || question.explain) && (
         <>
           <Panel className="px-3 py-2.5 text-xs leading-relaxed text-ink2">
-            {!chosen.correct && <p className="font-semibold text-ink">La risposta giusta è evidenziata in verde.</p>}
+            {!chosen.correct && <p className="font-semibold text-ink">{t('La risposta giusta è evidenziata in verde.')}</p>}
             {question.explain && <p className={chosen.correct ? '' : 'mt-1'}><RichText text={question.explain} /></p>}
           </Panel>
           <Btn full onClick={() => onDone(chosen.correct)}>
-            Continua
+            {t('Continua')}
             <ChevronRight className="h-4 w-4" />
           </Btn>
         </>
@@ -551,7 +545,7 @@ function ExerciseCard({
 // ── Lettore di lezione ──────────────────────────────────────────────────────
 
 function LessonPlayer({
-  lesson,
+  lesson: source,
   progress,
   audio,
   mic,
@@ -567,6 +561,8 @@ function LessonPlayer({
   onBack: () => void;
   onNavigate: Navigate;
 }) {
+  // I testi della lezione nella lingua scelta; gli id restano quelli dei dati.
+  const lesson = useMemo(() => localize(source, LESSON_TEXT), [source]);
   const [phase, setPhase] = useState<'lettura' | 'esercizi' | 'fine'>('lettura');
   useScrollTop(lesson.id);
   const [exIndex, setExIndex] = useState(0);
@@ -610,7 +606,7 @@ function LessonPlayer({
         <>
           {lesson.prereq && (
             <Panel className="px-3 py-2 text-xs leading-snug text-ink3">
-              <span className="font-semibold text-ink2">Prima di questa lezione:</span> {lesson.prereq}
+              <span className="font-semibold text-ink2">{t('Prima di questa lezione:')}</span> {lesson.prereq}
             </Panel>
           )}
           <div className="space-y-3">
@@ -619,7 +615,7 @@ function LessonPlayer({
             ))}
           </div>
           <Btn onClick={() => { setPhase('esercizi'); window.scrollTo({ top: 0 }); }} className="w-full justify-center">
-            Ho capito, provo
+            {t('Ho capito, provo')}
             <ChevronRight className="h-4 w-4" />
           </Btn>
         </>
@@ -646,23 +642,23 @@ function LessonPlayer({
       {phase === 'fine' && (
         <div className="flex flex-col items-center gap-3 py-4 text-center">
           <div className="text-5xl">{right === lesson.exercises.length ? '🏆' : '📘'}</div>
-          <p className="text-xl font-black text-ink">Lezione completata</p>
+          <p className="text-xl font-black text-ink">{t('Lezione completata')}</p>
           <p className="text-sm text-ink2">
-            {right}/{lesson.exercises.length} esercizi giusti · +{XP_PER_LESSON} XP
+            {t('{right}/{total} esercizi giusti · +{xp} XP', { right, total: lesson.exercises.length, xp: XP_PER_LESSON })}
           </p>
           {right < lesson.exercises.length && (
             <p className="max-w-xs text-xs text-ink3">
-              Quelli sbagliati torneranno nel ripasso di teoria, finché non ti vengono al primo colpo.
+              {t('Quelli sbagliati torneranno nel ripasso di teoria, finché non ti vengono al primo colpo.')}
             </p>
           )}
           {lesson.piece && pieceById(lesson.piece) && (
             <Btn full onClick={() => onNavigate('melody', { pieceId: lesson.piece })}>
               <Music className="h-4 w-4" />
-              Ora il brano: {pieceById(lesson.piece)?.title}
+              {t('Ora il brano: {titolo}', { titolo: t(pieceById(lesson.piece)?.title ?? '') })}
             </Btn>
           )}
           <Btn variant={lesson.piece ? 'soft' : 'primary'} onClick={onBack} className="px-6">
-            Torna alle lezioni
+            {t('Torna alle lezioni')}
           </Btn>
         </div>
       )}
@@ -690,16 +686,16 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
         value={tab}
         onChange={setTab}
         options={[
-          { value: 'accordi' as const, label: 'Accordi' },
-          { value: 'scale' as const, label: 'Scale' },
-          { value: 'ritmo' as const, label: 'Ritmo' },
-          { value: 'termini' as const, label: 'Termini' },
+          { value: 'accordi' as const, label: t('Accordi') },
+          { value: 'scale' as const, label: t('Scale') },
+          { value: 'ritmo' as const, label: t('Ritmo') },
+          { value: 'termini' as const, label: t('Termini') },
         ]}
       />
 
       {tab !== 'ritmo' && (
         <Card>
-          <p className="mb-2 text-[11px] uppercase tracking-wider text-ink3">nota di partenza</p>
+          <p className="mb-2 text-[11px] uppercase tracking-wider text-ink3">{t('nota di partenza')}</p>
           <div className="flex flex-wrap gap-1.5">
             {ALL_ROOTS.map(r => (
               <button
@@ -710,7 +706,7 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
                   root === r ? 'bg-brand text-white' : 'bg-surface2 text-ink2'
                 }`}
               >
-                {italianOf(r)}
+                {noteName(r)}
               </button>
             ))}
           </div>
@@ -725,7 +721,7 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
 
       {tab === 'accordi' && (
         <Card>
-          <SectionTitle hint="tocca per vederlo sulla tastiera e ascoltarlo">Tutti gli accordi su {italianOf(root)}</SectionTitle>
+          <SectionTitle hint={t('tocca per vederlo sulla tastiera e ascoltarlo')}>{t('Tutti gli accordi su {nota}', { nota: noteName(root, true) })}</SectionTitle>
           <div className="mt-2 space-y-2">
             {(Object.keys(CHORDS) as ChordQuality[]).map(q => {
               const notes = buildChord(`${root}4`, q);
@@ -734,7 +730,7 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
                   key={q}
                   type="button"
                   onClick={() => {
-                    setShown({ notes, label: `${chordSymbol(`${root}4`, q)} · ${notes.map(n => italianOf(n)).join(' · ')}` });
+                    setShown({ notes, label: `${chordSymbol(`${root}4`, q)} · ${notes.map(n => noteName(n)).join(' · ')}` });
                     mic.suppress(2200);
                     audio.playChord(notes, 1.6);
                   }}
@@ -744,8 +740,8 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
                     {chordSymbol(`${root}4`, q)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold text-ink2">{q} · {CHORDS[q].formula}</span>
-                    <span className="block text-xs text-ink3">{notes.map(n => italianOf(n)).join(' · ')}</span>
+                    <span className="block text-xs font-semibold text-ink2">{t(q)} · {CHORDS[q].formula}</span>
+                    <span className="block text-xs text-ink3">{notes.map(n => noteName(n)).join(' · ')}</span>
                   </span>
                   <Volume2 className="h-4 w-4 flex-shrink-0 text-ink3" />
                 </button>
@@ -758,13 +754,13 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
       {tab === 'scale' && (
         <>
           <Card>
-            <SectionTitle>Tonalità di {italianOf(root)}</SectionTitle>
+            <SectionTitle>{t('Tonalità di {nota}', { nota: noteName(root, true) })}</SectionTitle>
             <p className="mt-1 text-sm text-ink2">
-              Maggiore: {signatureText(keyInfo(root))} · relativa minore {italianOf(keyInfo(root).relative)}
+              {t('Maggiore: {armatura} · relativa minore {nota}', { armatura: signatureText(keyInfo(root)), nota: noteName(keyInfo(root).relative, true) })}
             </p>
           </Card>
           <Card>
-            <SectionTitle hint="tocca per ascoltare">Scale su {italianOf(root)}</SectionTitle>
+            <SectionTitle hint={t('tocca per ascoltare')}>{t('Scale su {nota}', { nota: noteName(root, true) })}</SectionTitle>
             <div className="mt-2 space-y-2">
               {(Object.keys(SCALE_EXPLAIN) as (keyof typeof SCALE_EXPLAIN)[]).map(type => {
                 const notes = buildScale(`${root}4`, type);
@@ -785,19 +781,19 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
 
       {tab === 'termini' && (
         <Card>
-          <SectionTitle hint="tocca una voce per la spiegazione — le stesse parole sono toccabili dentro le lezioni">
-            Dizionario dei termini
+          <SectionTitle hint={t('tocca una voce per la spiegazione — le stesse parole sono toccabili dentro le lezioni')}>
+            {t('Dizionario dei termini')}
           </SectionTitle>
           <div className="mt-2 flex flex-col gap-1.5">
-            {[...glossario].sort((a, b) => a.word.localeCompare(b.word, 'it')).map(t => (
+            {[...glossario].sort((a, b) => t(a.word).localeCompare(t(b.word), getLang())).map(term => (
               <button
-                key={t.id}
+                key={term.id}
                 type="button"
-                onClick={() => gloss?.open(t.id)}
+                onClick={() => gloss?.open(term.id)}
                 className="rounded-xl border border-line bg-surface p-3 text-left active:scale-[0.99]"
               >
-                <span className="block text-sm font-bold text-ink">{t.word}</span>
-                <span className="mt-0.5 block text-xs leading-snug text-ink2">{t.short}</span>
+                <span className="block text-sm font-bold text-ink">{t(term.word)}</span>
+                <span className="mt-0.5 block text-xs leading-snug text-ink2">{t(term.short)}</span>
               </button>
             ))}
           </div>
@@ -807,28 +803,28 @@ function Glossary({ audio, mic }: { audio: AudioApi; mic: MicApi }) {
       {tab === 'ritmo' && (
         <>
           <Card>
-            <SectionTitle>Figure e pause</SectionTitle>
+            <SectionTitle>{t('Figure e pause')}</SectionTitle>
             <div className="mt-2 space-y-2">
               {VALUES.map(v => (
                 <div key={v.id} className="rounded-xl border border-line bg-surface p-3">
                   <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-bold text-ink">{v.name}</span>
+                    <span className="text-sm font-bold text-ink">{t(v.name)}</span>
                     <span className="text-xs text-ink3">{beatsLabel(v.beats)}</span>
                   </div>
-                  <p className="mt-0.5 text-xs text-ink2">{v.drawing}</p>
-                  <p className="text-xs text-ink3">Pausa: {v.restDrawing}</p>
+                  <p className="mt-0.5 text-xs text-ink2">{t(v.drawing)}</p>
+                  <p className="text-xs text-ink3">{t('Pausa: {desc}', { desc: t(v.restDrawing) })}</p>
                 </div>
               ))}
             </div>
           </Card>
           <Card>
-            <SectionTitle>Metri</SectionTitle>
+            <SectionTitle>{t('Metri')}</SectionTitle>
             <div className="mt-2 space-y-2">
               {METERS.map(m => (
                 <div key={m.id} className="rounded-xl border border-line bg-surface p-3">
                   <span className="text-sm font-black text-ink">{m.id}</span>
-                  <p className="mt-0.5 text-xs text-ink2">{m.feel}</p>
-                  <p className="text-xs text-ink3">Accenti: {m.accents}</p>
+                  <p className="mt-0.5 text-xs text-ink2">{t(m.feel)}</p>
+                  <p className="text-xs text-ink3">{t('Accenti: {desc}', { desc: t(m.accents) })}</p>
                 </div>
               ))}
             </div>
@@ -852,19 +848,21 @@ function ScaleRow({
   mic: MicApi;
   onShow: (s: { notes: string[]; label: string }) => void;
 }) {
+  // Il nome del tipo di scala nella lingua scelta (in italiano resta com'è).
+  const shown = getLang() === 'it' ? name : t(name).charAt(0).toUpperCase() + t(name).slice(1);
   return (
     <button
       type="button"
       onClick={() => {
-        onShow({ notes, label: name });
+        onShow({ notes, label: shown });
         mic.suppress(Math.ceil(notes.length * 400 + 900));
         audio.playSequence(notes.map(n => ({ toneNote: n, durationSec: 0.35 })));
       }}
       className="flex w-full items-start gap-3 rounded-xl border border-line bg-surface p-3 text-left active:scale-[0.99]"
     >
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold text-ink">{name}</span>
-        <span className="block text-xs text-ink3">{notes.map(n => italianOf(n)).join(' · ')}</span>
+        <span className="block text-sm font-bold text-ink">{shown}</span>
+        <span className="block text-xs text-ink3">{notes.map(n => noteName(n)).join(' · ')}</span>
       </span>
       <Volume2 className="h-4 w-4 flex-shrink-0 text-ink3" />
     </button>
@@ -919,6 +917,7 @@ function TheoryReview({
   );
 
   const item = queue[pos];
+  const itemEx = useMemo(() => (item ? localize(item.ex, LESSON_TEXT) : null), [item]);
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -926,29 +925,32 @@ function TheoryReview({
           <ChevronLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="font-bold text-ink">Ripasso di teoria</p>
+          <p className="font-bold text-ink">{t('Ripasso di teoria')}</p>
           <p className="truncate text-xs text-ink3">
-            {item ? `dalla lezione: ${item.lesson.title}${item.retry ? ' · di nuovo' : ''}` : 'finito'}
+            {item
+              ? item.retry
+                ? t('dalla lezione: {title} · di nuovo', { title: t(item.lesson.title) })
+                : t('dalla lezione: {title}', { title: t(item.lesson.title) })
+              : t('finito')}
           </p>
         </div>
       </div>
-      {item ? (
+      {item && itemEx ? (
         <>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold tabular-nums text-ink3">{pos + 1}/{queue.length}</span>
             <Bar pct={pos / queue.length} className="flex-1" />
           </div>
-          <ExerciseCard key={pos} ex={item.ex} audio={audio} mic={mic} onDone={onDone} />
+          <ExerciseCard key={pos} ex={itemEx} audio={audio} mic={mic} onDone={onDone} />
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-4 text-center">
           <div className="text-5xl">{right === firstRound ? '🏆' : '🔁'}</div>
-          <p className="text-xl font-black text-ink">{right}/{firstRound} giusti al primo colpo</p>
+          <p className="text-xl font-black text-ink">{t('{right}/{total} giusti al primo colpo', { right, total: firstRound })}</p>
           <p className="max-w-xs text-sm text-ink2">
-            Quelli giusti torneranno fra qualche giorno, sempre più distanti, finché non escono dal ripasso.
-            Quelli sbagliati tornano domani.
+            {t('Quelli giusti torneranno fra qualche giorno, sempre più distanti, finché non escono dal ripasso. Quelli sbagliati tornano domani.')}
           </p>
-          <Btn onClick={onBack} className="px-6">Torna alle lezioni</Btn>
+          <Btn onClick={onBack} className="px-6">{t('Torna alle lezioni')}</Btn>
         </div>
       )}
     </Card>
@@ -993,9 +995,9 @@ function ModuleCard({
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/65">
-                Modulo {index + 1} · {mod.lessons.length} lezioni · {minutes}′
+                {t('Modulo {n} · {count} lezioni · {minutes}′', { n: index + 1, count: mod.lessons.length, minutes })}
               </p>
-              <h3 className="mt-1 text-[22px] font-bold leading-tight tracking-tight text-white">{mod.title}</h3>
+              <h3 className="mt-1 text-[22px] font-bold leading-tight tracking-tight text-white">{t(mod.title)}</h3>
             </div>
             <ChevronDown className={`mb-1 h-5 w-5 flex-shrink-0 text-white/80 transition-transform ${open ? 'rotate-180' : ''}`} />
           </div>
@@ -1010,7 +1012,7 @@ function ModuleCard({
 
       {open && (
         <>
-          <p className="border-b border-line px-4 py-3 text-[13px] leading-snug text-ink2">{mod.summary}</p>
+          <p className="border-b border-line px-4 py-3 text-[13px] leading-snug text-ink2">{t(mod.summary)}</p>
           <div className="divide-y divide-line">
             {mod.lessons.map((l, i) => {
               const isDone = done.includes(l.id);
@@ -1033,13 +1035,13 @@ function ModuleCard({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <span className={`text-[15px] font-semibold tracking-tight ${isDone ? 'text-ink3' : 'text-ink'}`}>{l.title}</span>
-                      {isNext && <Pill tone="brand">da qui</Pill>}
+                      <span className={`text-[15px] font-semibold tracking-tight ${isDone ? 'text-ink3' : 'text-ink'}`}>{t(l.title)}</span>
+                      {isNext && <Pill tone="brand">{t('da qui')}</Pill>}
                     </span>
-                    <span className="mt-0.5 block text-[13px] leading-snug text-ink3">{l.goal}</span>
+                    <span className="mt-0.5 block text-[13px] leading-snug text-ink3">{t(l.goal)}</span>
                     {l.prereq && !isDone && (
                       <span className="mt-0.5 block text-[11px] leading-snug text-ink3/80">
-                        prima serve: {l.prereq}
+                        {t('prima serve: {desc}', { desc: t(l.prereq) })}
                       </span>
                     )}
                   </span>
@@ -1098,37 +1100,37 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        eyebrow="Teoria, tecnica, orecchio"
-        title="Studio"
-        subtitle={section === 'lezioni' ? `${done.length} di ${totalLessons} lezioni completate` : undefined}
+        eyebrow={t('Teoria, tecnica, orecchio')}
+        title={t('Studio')}
+        subtitle={section === 'lezioni' ? t('{done} di {total} lezioni completate', { done: done.length, total: totalLessons }) : undefined}
       />
       <Segmented
         value={section}
         onChange={setSection}
         options={[
-          { value: 'lezioni' as const, label: 'Lezioni' },
-          { value: 'tecnica' as const, label: 'Tecnica' },
-          { value: 'ritmo' as const, label: 'Ritmo' },
-          { value: 'orecchio' as const, label: 'Orecchio' },
-          { value: 'glossario' as const, label: 'Termini' },
+          { value: 'lezioni' as const, label: t('Lezioni') },
+          { value: 'tecnica' as const, label: t('Tecnica') },
+          { value: 'ritmo' as const, label: t('Ritmo') },
+          { value: 'orecchio' as const, label: t('Orecchio') },
+          { value: 'glossario' as const, label: t('Termini') },
         ]}
       />
 
       {section === 'lezioni' && (
         <>
           {due.length > 0 && (
-            <UiSection label="Da ripassare">
+            <UiSection label={t('Da ripassare')}>
               <Card className="flex items-center gap-3">
                 <RotateCcw className="h-5 w-5 flex-shrink-0 text-amber-400" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-semibold text-ink">{due.length} {due.length === 1 ? 'esercizio' : 'esercizi'}</p>
-                  <p className="text-[13px] text-ink3">Quelli sbagliati tornano finché non li sai al primo colpo.</p>
+                  <p className="text-[15px] font-semibold text-ink">{due.length === 1 ? t('1 esercizio') : t('{n} esercizi', { n: due.length })}</p>
+                  <p className="text-[13px] text-ink3">{t('Quelli sbagliati tornano finché non li sai al primo colpo.')}</p>
                 </div>
-                <Btn onClick={() => setReviewIds(due)}>Ripassa</Btn>
+                <Btn onClick={() => setReviewIds(due)}>{t('Ripassa')}</Btn>
               </Card>
             </UiSection>
           )}
-          <UiSection label="Il percorso">
+          <UiSection label={t('Il percorso')}>
             <div className="flex flex-col gap-3">
               {modules.map((m, i) => (
                 <ModuleCard
@@ -1138,7 +1140,7 @@ export function StudyView({ progress, audio, mic, notify, intent, onNavigate }: 
                   done={done}
                   open={openModule === m.id}
                   onToggle={() => setOpenModule(o => (o === m.id ? null : m.id))}
-                  onOpen={setLesson}
+                  onOpen={l => setLesson(allLessons.find(x => x.id === l.id) ?? l)}
                 />
               ))}
             </div>

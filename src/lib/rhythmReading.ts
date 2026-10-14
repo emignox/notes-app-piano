@@ -47,6 +47,11 @@ const CELLS: Record<string, Cell> = {
   ess: { id: 'ess', items: [n('8', 0.5), n('16', 0.25), n('16', 0.25)], starts: [0, 1, 2, 3], weight: 2 },
 };
 
+/** Come si chiamano le figure (durata VexFlow → nome), per descrivere una figura a parole. */
+export const DURATION_NAMES: Record<string, string> = {
+  w: 'semibreve', hd: 'minima puntata', h: 'minima', qd: 'semiminima puntata', q: 'semiminima', '8': 'croma', '16': 'semicroma',
+};
+
 export interface RhythmLevel {
   level: number;
   title: string;

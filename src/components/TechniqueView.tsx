@@ -26,12 +26,28 @@ import {
   chordSymbol,
   invert,
   inversionsOf,
+  noteName,
 } from '../lib/harmony';
 import type { ArpeggioPattern } from '../lib/harmony';
 import { accidentalKind, fullLabel, italianOf, midiOf, parseNote, sameNote, samePitchClass, vexKeyOf } from '../lib/notes';
+import { getLang, t } from '../i18n';
 import { haptics } from '../lib/haptics';
-import { CHORD_QUALITIES, arpeggioExercises, chordExercises, scaleExercises } from '../data/technique';
-import type { ArpeggioExercise, ChordExercise, ScaleExercise } from '../data/technique';
+import {
+  ARP_FILTERS,
+  CHORD_FILTERS,
+  SCALE_FILTERS,
+  arpKind,
+  arpeggioExercises,
+  arpeggioNote,
+  arpeggioTitle,
+  chordExercises,
+  chordTitle,
+  chordUsage,
+  scaleExercises,
+  scaleNote,
+  scaleTitle,
+} from '../data/technique';
+import type { ArpFilter, ArpeggioExercise, ChordExercise, ChordFilter, ScaleExercise } from '../data/technique';
 import { Btn, Card, Panel, Pill, Segmented, SectionTitle } from './ui';
 import { useScrollTop } from '../hooks/useScrollTop';
 import type { Notify } from './ui';
@@ -186,13 +202,13 @@ function Runner({
           value={hand}
           onChange={onHand}
           options={[
-            { value: 'right' as const, label: 'Destra' },
-            { value: 'left' as const, label: 'Sinistra' },
+            { value: 'right' as const, label: t('Destra') },
+            { value: 'left' as const, label: t('Sinistra') },
           ]}
         />
         <Btn variant="soft" onClick={listen} className="px-3 py-2">
           <Volume2 className="h-4 w-4" />
-          Ascolta
+          {t('Ascolta')}
         </Btn>
         <Btn variant="soft" onClick={restart} className="px-3 py-2">
           <RotateCcw className="h-4 w-4" />
@@ -212,7 +228,7 @@ function Runner({
       {!done && (
         <Panel className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-wider text-ink3">nota da suonare</p>
+            <p className="text-[11px] uppercase tracking-wider text-ink3">{t('nota da suonare')}</p>
             <p className="text-xl font-black text-ink">{fullLabel(target ?? 'C4', 'both')}</p>
           </div>
           {finger ? (
@@ -220,7 +236,7 @@ function Runner({
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xl font-black text-white">
                 {finger}
               </span>
-              <span className="mt-0.5 text-[10px] text-ink3">dito</span>
+              <span className="mt-0.5 text-[10px] text-ink3">{t('dito')}</span>
             </div>
           ) : null}
         </Panel>
@@ -228,9 +244,9 @@ function Runner({
 
       {done && (
         <Panel className="flex items-center justify-between gap-3 border-emerald-500/50 bg-emerald-500/10 px-4 py-3">
-          <p className="font-bold text-emerald-400">Figura completata 🎹</p>
+          <p className="font-bold text-emerald-400">{t('Figura completata 🎹')}</p>
           <Btn variant="soft" onClick={restart} className="px-3 py-2">
-            Ancora
+            {t('Ancora')}
           </Btn>
         </Panel>
       )}
@@ -241,7 +257,7 @@ function Runner({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
           </span>
-          <span className="text-sm text-ink2">Suonala sul piano…</span>
+          <span className="text-sm text-ink2">{t('Suonala sul piano…')}</span>
           <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-brand/20">
             <span
               className="h-full rounded-full bg-brand transition-[width] duration-75"
@@ -250,7 +266,7 @@ function Runner({
           </span>
           {mic.liveNote && (
             <span className="rounded-lg bg-brand px-3 py-1 text-base font-bold text-white">
-              {italianOf(mic.liveNote.name)}
+              {noteName(mic.liveNote.name)}
               {mic.liveNote.octave}
             </span>
           )}
@@ -259,7 +275,7 @@ function Runner({
 
       <Panel className="p-2">
         <p className="mb-1.5 px-1 text-[11px] text-ink3">
-          {mic.isListening ? 'oppure tocca il tasto' : 'tocca il tasto'}
+          {mic.isListening ? t('oppure tocca il tasto') : t('tocca il tasto')}
         </p>
         <PianoKeyboard
           from={range.from}
@@ -329,13 +345,13 @@ function ScaleRunner({
   return (
     <Runner
       key={`${ex.id}-${hand}-${direction}`}
-      title={`Scala di ${ex.title}`}
-      subtitle={`${notes.length} note · mano ${hand === 'right' ? 'destra' : 'sinistra'}`}
+      title={t('Scala di {title}', { title: scaleTitle(ex) })}
+      subtitle={hand === 'right' ? t('{n} note · mano destra', { n: notes.length }) : t('{n} note · mano sinistra', { n: notes.length })}
       notes={notes}
       fingering={fingering}
       hand={hand}
       onHand={setHand}
-      teaching={`${ex.note}\n\n${SCALE_EXPLAIN[ex.type]}`}
+      teaching={`${scaleNote(ex)}\n\n${t(SCALE_EXPLAIN[ex.type])}`}
       audio={audio}
       mic={mic}
       onBack={onBack}
@@ -344,9 +360,9 @@ function ScaleRunner({
           value={direction}
           onChange={setDirection}
           options={[
-            { value: 'salita' as const, label: 'Salita' },
-            { value: 'discesa' as const, label: 'Discesa' },
-            { value: 'andata e ritorno' as const, label: 'Su e giù' },
+            { value: 'salita' as const, label: t('Salita') },
+            { value: 'discesa' as const, label: t('Discesa') },
+            { value: 'andata e ritorno' as const, label: t('Su e giù') },
           ]}
         />
       }
@@ -391,13 +407,13 @@ function ArpeggioRunner({
   return (
     <Runner
       key={`${ex.id}-${hand}-${pattern}`}
-      title={`Arpeggio di ${ex.title}`}
-      subtitle={`${notes.length} note · ${pattern}`}
+      title={t('Arpeggio di {title}', { title: arpeggioTitle(ex) })}
+      subtitle={t('{n} note · {pattern}', { n: notes.length, pattern: t(pattern) })}
       notes={notes}
       fingering={fingering}
       hand={hand}
       onHand={setHand}
-      teaching={`${ex.note}\n\n${PATTERN_EXPLAIN[pattern]}`}
+      teaching={`${arpeggioNote(ex)}\n\n${t(PATTERN_EXPLAIN[pattern])}`}
       audio={audio}
       mic={mic}
       onBack={onBack}
@@ -406,10 +422,10 @@ function ArpeggioRunner({
           value={pattern}
           onChange={setPattern}
           options={[
-            { value: 'salita' as const, label: 'Salita' },
-            { value: 'discesa' as const, label: 'Discesa' },
-            { value: 'andata e ritorno' as const, label: 'Su e giù' },
-            { value: 'alternato' as const, label: 'Alternato' },
+            { value: 'salita' as const, label: t('Salita') },
+            { value: 'discesa' as const, label: t('Discesa') },
+            { value: 'andata e ritorno' as const, label: t('Su e giù') },
+            { value: 'alternato' as const, label: t('Alternato') },
           ]}
         />
       }
@@ -493,21 +509,21 @@ function ChordStudy({
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold text-ink">
-            {ex.title} <span className="text-ink3">· {chordSymbol(ex.root, ex.quality)}</span>
+            {chordTitle(ex)} <span className="text-ink3">· {chordSymbol(ex.root, ex.quality)}</span>
           </p>
-          <p className="text-xs text-ink3">{ex.quality} · {spec.formula}</p>
+          <p className="text-xs text-ink3">{t(ex.quality)} · {spec.formula}</p>
         </div>
       </div>
 
       {/* Le posizioni: è la domanda "standard, reverse, middle" */}
       <div>
-        <p className="mb-1.5 text-[11px] uppercase tracking-wider text-ink3">posizione</p>
+        <p className="mb-1.5 text-[11px] uppercase tracking-wider text-ink3">{t('posizione')}</p>
         <Segmented
           value={String(inversion)}
           onChange={v => setInversion(Number(v))}
           options={inversions.map(i => ({
             value: String(i.index),
-            label: i.index === 0 ? 'Fondam.' : `${i.index}° riv.`,
+            label: i.index === 0 ? t('Fondam.') : t('{n}° riv.', { n: i.index }),
           }))}
         />
       </div>
@@ -516,33 +532,34 @@ function ChordStudy({
 
       <Panel className="space-y-1.5 px-4 py-3 text-sm leading-relaxed">
         <p className="font-bold text-ink">
-          {info.name} <span className="font-normal text-ink3">({info.english})</span>
+          {info.name}{' '}
+          {getLang() === 'it' && <span className="font-normal text-ink3">({info.english})</span>}
         </p>
         <p className="text-ink2"><RichText text={info.explain} /></p>
         <p className="text-ink2">
-          Note dal basso: <span className="font-bold text-ink">{notes.map(n => italianOf(n)).join(' – ')}</span>
+          {t('Note dal basso:')} <span className="font-bold text-ink">{notes.map(n => noteName(n)).join(' – ')}</span>
         </p>
       </Panel>
 
       <div className="flex flex-wrap gap-2">
         <Btn variant="soft" onClick={listenTogether} className="px-3 py-2">
           <Volume2 className="h-4 w-4" />
-          Insieme
+          {t('Insieme')}
         </Btn>
         <Btn variant="soft" onClick={listenArpeggio} className="px-3 py-2">
           <Play className="h-4 w-4" />
-          Arpeggiato
+          {t('Arpeggiato')}
         </Btn>
       </div>
 
       <Panel className="p-2">
         <div className="mb-1.5 flex items-center justify-between px-1">
           <p className="text-[11px] text-ink3">
-            {complete ? 'accordo completo ✓' : `premi le note: ne mancano ${missing.length}`}
+            {complete ? t('accordo completo ✓') : t('premi le note: ne mancano {n}', { n: missing.length })}
           </p>
           {hit.length > 0 && (
             <button type="button" onClick={() => setHit([])} className="text-[11px] font-semibold text-brand">
-              azzera
+              {t('azzera')}
             </button>
           )}
         </div>
@@ -558,15 +575,14 @@ function ChordStudy({
 
       {mic.isListening && (
         <Panel className="px-3 py-2.5 text-xs leading-relaxed text-ink2">
-          🎤 Col microfono l'accordo va <span className="font-bold text-ink">arpeggiato</span>, una nota
-          per volta: il rilevatore sente una sola altezza alla volta e note premute insieme non sa
-          separarle. Non è un difetto dell'app, è come funziona il riconoscimento dal suono.
+          {t('🎤 Col microfono l\'accordo va')} <span className="font-bold text-ink">{t('arpeggiato')}</span>
+          {t(', una nota per volta: il rilevatore sente una sola altezza alla volta e note premute insieme non sa separarle. Non è un difetto dell\'app, è come funziona il riconoscimento dal suono.')}
         </Panel>
       )}
 
       <Panel className="space-y-1.5 px-3 py-2.5 text-xs leading-relaxed text-ink2">
-        <p><RichText text={spec.explain} /></p>
-        <p className="text-ink3"><RichText text={ex.usage} /></p>
+        <p><RichText text={t(spec.explain)} /></p>
+        <p className="text-ink3"><RichText text={chordUsage(ex)} /></p>
       </Panel>
     </Card>
   );
@@ -594,7 +610,7 @@ function Row({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-bold text-ink">{title}</span>
-          <Pill tone={LEVEL_TONE[level]}>{level}</Pill>
+          <Pill tone={LEVEL_TONE[level]}>{t(level)}</Pill>
         </div>
         <p className="mt-0.5 text-xs leading-snug text-ink2">{desc}</p>
       </div>
@@ -624,33 +640,12 @@ function Chips<T extends string>({
             value === o.value ? 'border-ink bg-ink text-canvas' : 'border-line text-ink2'
           }`}
         >
-          {o.label} <span className="opacity-60">{o.count}</span>
+          {t(o.label)} <span className="opacity-60">{o.count}</span>
         </button>
       ))}
     </div>
   );
 }
-
-const SCALE_FILTERS: { value: ScaleExercise['type']; label: string }[] = [
-  { value: 'maggiore', label: 'Maggiori' },
-  { value: 'minore naturale', label: 'Minori naturali' },
-  { value: 'minore armonica', label: 'Minori armoniche' },
-  { value: 'minore melodica', label: 'Minori melodiche' },
-];
-
-type ArpFilter = 'maggiore' | 'minore' | 'settima';
-const ARP_FILTERS: { value: ArpFilter; label: string }[] = [
-  { value: 'maggiore', label: 'Maggiori' },
-  { value: 'minore', label: 'Minori' },
-  { value: 'settima', label: 'Settima' },
-];
-const arpKind = (ex: ArpeggioExercise): ArpFilter => (ex.quality === 'maggiore' || ex.quality === 'minore' ? ex.quality : 'settima');
-
-type ChordFilter = 'da studiare' | ChordExercise['quality'];
-const CHORD_FILTERS: { value: ChordFilter; label: string }[] = [
-  { value: 'da studiare', label: 'Da studiare' },
-  ...CHORD_QUALITIES.map(q => ({ value: q.quality, label: q.quality === 'settima di dominante' ? 'settima' : q.label })),
-];
 
 export function TechniqueView({ audio, mic }: TechniqueViewProps) {
   const [section, setSection] = useState<TechniqueSection>('scale');
@@ -674,16 +669,16 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
         value={section}
         onChange={setSection}
         options={[
-          { value: 'scale' as const, label: 'Scale' },
-          { value: 'arpeggi' as const, label: 'Arpeggi' },
-          { value: 'accordi' as const, label: 'Accordi' },
+          { value: 'scale' as const, label: t('Scale') },
+          { value: 'arpeggi' as const, label: t('Arpeggi') },
+          { value: 'accordi' as const, label: t('Accordi') },
         ]}
       />
 
       {section === 'scale' && (
         <Card>
-          <SectionTitle hint="Con la diteggiatura standard: è quella il contenuto dell'esercizio">
-            Scale
+          <SectionTitle hint={t('Con la diteggiatura standard: è quella il contenuto dell\'esercizio')}>
+            {t('Scale')}
           </SectionTitle>
           <Chips
             value={scaleType}
@@ -694,8 +689,8 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
             {scaleExercises.filter(ex => ex.type === scaleType).map(ex => (
               <Row
                 key={ex.id}
-                title={ex.title}
-                desc={ex.note}
+                title={scaleTitle(ex)}
+                desc={scaleNote(ex)}
                 level={ex.level}
                 onClick={() => setScale(ex)}
               />
@@ -706,7 +701,7 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
 
       {section === 'arpeggi' && (
         <Card>
-          <SectionTitle hint="Salita, discesa, su e giù, alternato">Arpeggi</SectionTitle>
+          <SectionTitle hint={t('Salita, discesa, su e giù, alternato')}>{t('Arpeggi')}</SectionTitle>
           <Chips
             value={arpType}
             onChange={setArpType}
@@ -716,8 +711,8 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
             {arpeggioExercises.filter(ex => arpKind(ex) === arpType).map(ex => (
               <Row
                 key={ex.id}
-                title={ex.title}
-                desc={ex.note}
+                title={arpeggioTitle(ex)}
+                desc={arpeggioNote(ex)}
                 level={ex.level}
                 onClick={() => setArp(ex)}
               />
@@ -728,7 +723,7 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
 
       {section === 'accordi' && (
         <Card>
-          <SectionTitle hint="Fondamentale e rivolti, su tutte e dodici le note">Accordi</SectionTitle>
+          <SectionTitle hint={t('Fondamentale e rivolti, su tutte e dodici le note')}>{t('Accordi')}</SectionTitle>
           <Chips
             value={chordType}
             onChange={setChordType}
@@ -741,8 +736,8 @@ export function TechniqueView({ audio, mic }: TechniqueViewProps) {
             {chordExercises.filter(chordMatches).map(ex => (
               <Row
                 key={ex.id}
-                title={`${ex.title} · ${chordSymbol(ex.root, ex.quality)}`}
-                desc={ex.usage}
+                title={`${chordTitle(ex)} · ${chordSymbol(ex.root, ex.quality)}`}
+                desc={chordUsage(ex)}
                 level={ex.level}
                 onClick={() => setChord(ex)}
               />

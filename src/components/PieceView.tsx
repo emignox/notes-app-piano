@@ -45,6 +45,7 @@ import type { SongSection } from './MelodyView';
 import { Library } from './Library';
 import { Leggio } from './leggio/Leggio';
 import type { LibraryEntry } from '../data/library';
+import { t } from '../i18n';
 
 interface PieceViewProps {
   section: SongSection;
@@ -83,6 +84,12 @@ function rangeFor(notes: string[], fallback: string): { from: string; to: string
   }
   const octaves = notes.map(n => parseNote(n).octave);
   return { from: `C${Math.min(...octaves)}`, to: `B${Math.max(...octaves)}` };
+}
+
+/** Il nome di una sezione come si mostra: quelle dei loop ("Batt. 3–4") portano i numeri. */
+function partLabel(name: string): string {
+  const m = /^Batt\. (.+)$/.exec(name);
+  return m ? t('Batt. {n}', { n: m[1] }) : t(name);
 }
 
 /** Il pezzo intero visto come una sezione: evita di avere due strade nel codice. */
@@ -137,7 +144,9 @@ function PieceChallenge({
       name: `Batt. ${first?.number ?? 1}${chosen.length > 1 ? `–${last?.number ?? first?.number}` : ''}`,
       from,
       to,
-      note: `Loop mirato di ${chosen.length} ${chosen.length === 1 ? 'battuta' : 'battute'}. Ripetilo pulito due volte prima di accelerare.`,
+      note: chosen.length === 1
+        ? t('Loop mirato di 1 battuta. Ripetilo pulito due volte prima di accelerare.')
+        : t('Loop mirato di {n} battute. Ripetilo pulito due volte prima di accelerare.', { n: chosen.length }),
     };
   }, [loopBars, loopMeasure, availableMeasures, basePart]);
 
@@ -329,8 +338,12 @@ function PieceChallenge({
         if (expected) {
           const delta = midiOf(toneNote) - midiOf(expected);
           const distance = Math.abs(delta);
-          const relation = distance === 0 ? 'nell’ottava sbagliata' : `${distance} ${distance === 1 ? 'semitono' : 'semitoni'} ${delta > 0 ? 'sopra' : 'sotto'}`;
-          setFeedback(`Hai suonato ${italianOf(toneNote)}; serve ${italianOf(expected)} (${relation}).`);
+          const relation = distance === 0
+            ? t('nell’ottava sbagliata')
+            : distance === 1
+            ? (delta > 0 ? t('1 semitono sopra') : t('1 semitono sotto'))
+            : (delta > 0 ? t('{n} semitoni sopra', { n: distance }) : t('{n} semitoni sotto', { n: distance }));
+          setFeedback(t('Hai suonato {played}; serve {expected} ({relation}).', { played: italianOf(toneNote), expected: italianOf(expected), relation }));
         }
         // Il verso d'errore aiuta, e non deve rientrare nel microfono.
         audio.playError();
@@ -468,7 +481,7 @@ function PieceChallenge({
     const slice = results.slice(part.from, part.to);
     const ok = slice.filter(r => r === 'correct').length;
     const pct = Math.round((ok / Math.max(1, slice.length)) * 100);
-    const handLabel = hand === 'right' ? 'mano destra' : hand === 'left' ? 'mano sinistra' : 'due mani';
+    const handLabel = hand === 'right' ? t('mano destra') : hand === 'left' ? t('mano sinistra') : t('due mani');
     const nextPart = partIdx + 1 < parts.length - 1 ? parts[partIdx + 1] : null;
     return (
       <>
@@ -476,47 +489,47 @@ function PieceChallenge({
         <Card className="flex flex-col items-center gap-4 text-center">
           <div className="text-5xl">{pct === 100 ? '🏆' : pct >= 80 ? '🎹' : '💪'}</div>
           <h2 className="text-2xl font-black text-ink">
-            {pct === 100 ? 'Suonato!' : 'Fine'}
+            {pct === 100 ? t('Suonato!') : t('Fine')}
           </h2>
           <p className="text-sm text-ink2">
-            {piece.title} · {part.name} · {handLabel}
+            {t(piece.title)} · {partLabel(part.name)} · {handLabel}
           </p>
           <p className="text-sm text-ink2">
-            {pct}% · {mistakes} {mistakes === 1 ? 'errore' : 'errori'}
+            {pct}% · {mistakes === 1 ? t('{n} errore', { n: mistakes }) : t('{n} errori', { n: mistakes })}
           </p>
           {smartLoop && suggestedBpm !== null && (
             <Panel className="w-full px-4 py-3 text-sm text-ink2">
               {suggestedBpm > bpm
-                ? `Due esecuzioni pulite: il prossimo giro sale con calma a ${suggestedBpm} BPM.`
+                ? t('Due esecuzioni pulite: il prossimo giro sale con calma a {bpm} BPM.', { bpm: suggestedBpm })
                 : pct === 100
-                ? `Ottimo primo giro a ${bpm} BPM. Ripetilo ancora una volta prima di accelerare.`
-                : `Resta a ${bpm} BPM: prima rendiamo stabile il passaggio, poi acceleriamo.`}
+                ? t('Ottimo primo giro a {bpm} BPM. Ripetilo ancora una volta prima di accelerare.', { bpm })
+                : t('Resta a {bpm} BPM: prima rendiamo stabile il passaggio, poi acceleriamo.', { bpm })}
             </Panel>
           )}
           {hand !== 'both' ? (
             <Panel className="w-full px-4 py-3 text-xs leading-relaxed text-ink2">
-              Prossimo passo: {hand === 'right' ? 'la stessa parte con la mano sinistra' : 'le due mani insieme'},
-              sempre su questa sezione. È così che si impara un pezzo — mai tutto in una volta.
+              {hand === 'right'
+                ? t('Prossimo passo: la stessa parte con la mano sinistra, sempre su questa sezione. È così che si impara un pezzo — mai tutto in una volta.')
+                : t('Prossimo passo: le due mani insieme, sempre su questa sezione. È così che si impara un pezzo — mai tutto in una volta.')}
             </Panel>
           ) : nextPart ? (
             <Panel className="w-full px-4 py-3 text-xs leading-relaxed text-ink2">
-              Questa sezione la sai. Passa a <b>{nextPart.name}</b>, e quando anche quella regge,
-              provale attaccate scegliendo «Tutto».
+              {t('Questa sezione la sai. Passa a')} <b>{partLabel(nextPart.name)}</b>{t(', e quando anche quella regge, provale attaccate scegliendo «Tutto».')}
             </Panel>
           ) : null}
           <div className="flex flex-wrap justify-center gap-2.5">
             <Btn variant="soft" onClick={() => { if (suggestedBpm) setBpm(suggestedBpm); reset(part.from); }}>
-              {suggestedBpm && suggestedBpm > bpm ? `Ripeti a ${suggestedBpm} BPM` : 'Riprova il loop'}
+              {suggestedBpm && suggestedBpm > bpm ? t('Ripeti a {bpm} BPM', { bpm: suggestedBpm }) : t('Riprova il loop')}
             </Btn>
             {hand !== 'both' && (
               <Btn onClick={() => switchHand(hand === 'right' ? 'left' : 'both')}>
-                {hand === 'right' ? 'Mano sinistra' : 'Insieme'}
+                {hand === 'right' ? t('Mano sinistra') : t('Insieme')}
               </Btn>
             )}
             {hand === 'both' && nextPart && (
-              <Btn onClick={() => switchPart(partIdx + 1)}>{nextPart.name}</Btn>
+              <Btn onClick={() => switchPart(partIdx + 1)}>{partLabel(nextPart.name)}</Btn>
             )}
-            <Btn variant="soft" onClick={onBack}>Altri pezzi</Btn>
+            <Btn variant="soft" onClick={onBack}>{t('Altri pezzi')}</Btn>
           </div>
         </Card>
       </>
@@ -533,9 +546,9 @@ function PieceChallenge({
           <ChevronLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-bold text-ink">{piece.emoji} {piece.title}</p>
+          <p className="truncate font-bold text-ink">{piece.emoji} {t(piece.title)}</p>
           <p className="text-xs text-ink3">
-            {piece.composer} · {tonality.label} · {piece.meter}
+            {t(piece.composer)} · {tonality.label} · {piece.meter}
           </p>
         </div>
         <span className="text-xs tabular-nums text-ink3">{doneCount + 1}/{total}</span>
@@ -553,7 +566,7 @@ function PieceChallenge({
                 i === partIdx ? 'border-brand bg-brand/15 text-brand' : 'border-line bg-surface2 text-ink2'
               }`}
             >
-              {sec.name}
+              {partLabel(sec.name)}
             </button>
           ))}
         </div>
@@ -561,16 +574,16 @@ function PieceChallenge({
 
       <div className="rounded-2xl border border-line bg-surface2 p-2.5">
         <div className="flex items-center gap-1.5">
-          <span className="mr-auto text-[11px] font-black uppercase tracking-wide text-ink3">Loop battute</span>
+          <span className="mr-auto text-[11px] font-black uppercase tracking-wide text-ink3">{t('Loop battute')}</span>
           {([0, 1, 2, 4] as const).map(n => (
             <button key={n} type="button" onClick={() => switchLoop(n)} className={`rounded-lg px-2.5 py-1.5 text-xs font-bold ${loopBars === n ? 'bg-brand text-white' : 'bg-surface text-ink2'}`}>
-              {n === 0 ? 'Sezione' : n}
+              {n === 0 ? t('Sezione') : n}
             </button>
           ))}
         </div>
         {loopBars > 0 && availableMeasures.length > 1 && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="text-[10px] text-ink3">inizio</span>
+            <span className="text-[10px] text-ink3">{t('inizio')}</span>
             <input
               type="range"
               min={0}
@@ -578,9 +591,9 @@ function PieceChallenge({
               value={Math.min(loopMeasure, Math.max(0, availableMeasures.length - loopBars))}
               onChange={e => switchLoop(loopBars, Number(e.target.value))}
               className="w-full accent-[var(--c-brand)]"
-              aria-label="Battuta iniziale del loop"
+              aria-label={t('Battuta iniziale del loop')}
             />
-            <span className="min-w-12 text-right text-[10px] font-bold text-ink2">{part.name}</span>
+            <span className="min-w-12 text-right text-[10px] font-bold text-ink2">{partLabel(part.name)}</span>
           </div>
         )}
       </div>
@@ -596,12 +609,12 @@ function PieceChallenge({
               hand === h.id ? 'border-brand bg-brand/15 text-brand' : 'border-line bg-surface2 text-ink2'
             }`}
           >
-            {h.label}
+            {t(h.label)}
           </button>
         ))}
       </div>
 
-      {part.note && <p className="px-1 text-[11px] leading-snug text-ink3">{part.note}</p>}
+      {part.note && <p className="px-1 text-[11px] leading-snug text-ink3">{t(part.note)}</p>}
 
       <div className="flex items-center gap-2 rounded-xl border border-line bg-surface2 px-3 py-2">
         <button
@@ -610,14 +623,14 @@ function PieceChallenge({
           className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-white active:scale-95"
         >
           {playing ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          {playing ? 'Ferma' : 'Ascolta'}
+          {playing ? t('Ferma') : t('Ascolta')}
         </button>
         {hand !== 'both' && !playing && (
           <button
             type="button"
             onClick={() => listen('both')}
             className="rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold text-ink2 active:scale-95"
-            aria-label="Ascolta tutte e due le mani"
+            aria-label={t('Ascolta tutte e due le mani')}
           >
             <Volume2 className="h-3.5 w-3.5" />
           </button>
@@ -628,7 +641,7 @@ function PieceChallenge({
             onClick={() => listen('both', true)}
             className="whitespace-nowrap rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold text-ink2 active:scale-95"
           >
-            tutto il brano
+            {t('tutto il brano')}
           </button>
         )}
         <div className="flex flex-1 items-center gap-2">
@@ -641,7 +654,7 @@ function PieceChallenge({
             value={bpm}
             onChange={e => setBpm(Number(e.target.value))}
             className="w-full accent-[var(--c-brand)]"
-            aria-label="Tempo"
+            aria-label={t('Tempo')}
           />
         </div>
       </div>
@@ -653,7 +666,7 @@ function PieceChallenge({
         onClick={() => setSmartLoop(v => !v)}
         className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs ${smartLoop ? 'border-brand/40 bg-brand/10' : 'border-line bg-surface2'}`}
       >
-        <span><b className="text-ink">Loop intelligente</b><span className="ml-1 text-ink3">2 giri puliti → +4 BPM</span></span>
+        <span><b className="text-ink">{t('Loop intelligente')}</b><span className="ml-1 text-ink3">{t('2 giri puliti → +4 BPM')}</span></span>
         <span className={`h-2.5 w-2.5 rounded-full ${smartLoop ? 'bg-brand' : 'bg-ink3'}`} />
       </button>
 
@@ -675,12 +688,12 @@ function PieceChallenge({
         <div className="min-w-0">
           <p className="text-xs text-ink2">
             {tied
-              ? 'Nota legata: tieni premuto, non ribattere'
+              ? t('Nota legata: tieni premuto, non ribattere')
               : required.length === 0
-              ? 'Questa mano tace: pausa'
+              ? t('Questa mano tace: pausa')
               : required.length === 1
-              ? 'Una nota'
-              : `${found.length}/${required.length} note dell'accordo`}
+              ? t('Una nota')
+              : t('{found}/{total} note dell\'accordo', { found: found.length, total: required.length })}
           </p>
           {advice && <p className="mt-0.5 text-[11px] leading-snug text-brand">{advice}</p>}
           {feedback && <p className="mt-1 text-xs font-semibold leading-snug text-red-400">{feedback}</p>}
@@ -691,7 +704,7 @@ function PieceChallenge({
             onClick={() => setFingering(v => !v)}
             className="text-[11px] font-semibold text-ink3"
           >
-            {fingering ? 'dita ✓' : 'dita'}
+            {fingering ? t('dita ✓') : t('dita')}
           </button>
           <button
             type="button"
@@ -699,7 +712,7 @@ function PieceChallenge({
             className="flex items-center gap-1 text-xs font-semibold text-ink3"
           >
             <Eye className="h-3.5 w-3.5" />
-            {showKeys ? 'nascondi' : 'mostrami'}
+            {showKeys ? t('nascondi') : t('mostrami')}
           </button>
         </div>
       </div>
@@ -708,7 +721,7 @@ function PieceChallenge({
       {hand !== 'left' && (
         <Panel className="p-2">
           <p className="mb-1 flex items-center gap-1 px-1 text-[11px] text-ink3">
-            <HandIcon className="h-3 w-3" /> mano destra
+            <HandIcon className="h-3 w-3" /> {t('mano destra')}
           </p>
           <PianoKeyboard
             from={rightRange.from}
@@ -724,7 +737,7 @@ function PieceChallenge({
       {hand !== 'right' && (
         <Panel className="p-2">
           <p className="mb-1 flex items-center gap-1 px-1 text-[11px] text-ink3">
-            <HandIcon className="h-3 w-3 -scale-x-100" /> mano sinistra
+            <HandIcon className="h-3 w-3 -scale-x-100" /> {t('mano sinistra')}
           </p>
           <PianoKeyboard
             from={leftRange.from}
@@ -739,8 +752,8 @@ function PieceChallenge({
       )}
 
       <p className="text-center text-[11px] text-ink3">
-        {measures.length} battute in tutto
-        {mic.isListening && ' · 🎤 microfono attivo: suona gli accordi insieme, come sono scritti'}
+        {t('{n} battute in tutto', { n: measures.length })}
+        {mic.isListening && t(' · 🎤 microfono attivo: suona gli accordi insieme, come sono scritti')}
       </p>
     </Card>
   );
@@ -766,13 +779,13 @@ export function PieceView({ progress, audio, mic, notify, section, onSection, in
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Repertorio" title="Canzoni" subtitle="Da Fra Martino a Chopin: ogni brano si apre nel Leggio." />
+      <PageHeader eyebrow={t('Repertorio')} title={t('Canzoni')} subtitle={t('Da Fra Martino a Chopin: ogni brano si apre nel Leggio.')} />
       <Segmented
         value={section}
         onChange={onSection}
         options={[
-          { value: 'pezzi', label: 'Brani' },
-          { value: 'melodie', label: 'Melodie' },
+          { value: 'pezzi', label: t('Brani') },
+          { value: 'melodie', label: t('Melodie') },
         ]}
       />
 

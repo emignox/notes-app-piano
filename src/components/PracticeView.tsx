@@ -24,9 +24,11 @@ import { curriculum, noteById, TOTAL_LEVELS } from '../data/curriculum';
 import { modules } from '../data/lessons';
 import { melodies } from '../data/melodies';
 import { levelTitle } from '../lib/xp';
+import { t } from '../i18n';
 import { italianOf, parseNote } from '../lib/notes';
 import type { Card as SrsCard } from '../lib/srs';
 import { cardKey, SLOW_MS } from '../lib/srs';
+import { dateLocale } from '../lib/storage';
 import { KIND_LABEL, confusionPartner, diagnose, topConfusions } from '../lib/diagnosis';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
@@ -61,12 +63,15 @@ const MAX_REQUEUE = 2;
 
 /** Che cosa manca alla nota più recente per far sbloccare la prossima. */
 function readiness(card: SrsCard | undefined): string {
-  if (!card || card.reps === 0) return 'ancora da provare';
+  if (!card || card.reps === 0) return t('ancora da provare');
   const need: string[] = [];
-  if (card.correct < 3) need.push(`${3 - card.correct} ${3 - card.correct === 1 ? 'risposta giusta' : 'risposte giuste'}`);
-  if (card.streak < 2) need.push('due giuste di fila');
-  if (card.avgMs >= SLOW_MS + 1500) need.push('un po\' più di sicurezza');
-  return need.length ? `mancano ${need.join(', ')}` : 'quasi pronta';
+  if (card.correct < 3) {
+    const n = 3 - card.correct;
+    need.push(n === 1 ? t('1 risposta giusta') : t('{n} risposte giuste', { n }));
+  }
+  if (card.streak < 2) need.push(t('due giuste di fila'));
+  if (card.avgMs >= SLOW_MS + 1500) need.push(t('un po\' più di sicurezza'));
+  return need.length ? t('mancano {list}', { list: need.join(', ') }) : t('quasi pronta');
 }
 
 /** Che cosa fa un passo del piano quando lo tocchi. */
@@ -115,8 +120,8 @@ function PlanRow({ step, n, isNext, onRun }: { step: PlanStep; n: number; isNext
 function todayTitle(): { greeting: string; date: string } {
   const now = new Date();
   const h = now.getHours();
-  const greeting = h < 5 ? 'Buonanotte' : h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera';
-  const date = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const greeting = h < 5 ? t('Buonanotte') : h < 13 ? t('Buongiorno') : h < 18 ? t('Buon pomeriggio') : t('Buonasera');
+  const date = now.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' });
   return { greeting, date };
 }
 
@@ -220,7 +225,7 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       setLog(logRef.current);
 
       if (outcome.leveledUp) {
-        notify('🎉', `Livello ${outcome.leveledUp}!`, levelTitle(outcome.leveledUp));
+        notify('🎉', t('Livello {n}!', { n: outcome.leveledUp }), levelTitle(outcome.leveledUp));
       }
       outcome.achievements.forEach(a => notify(a.emoji, a.title, a.desc));
 
@@ -250,7 +255,7 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
   const unlockAndIntroduce = useCallback(() => {
     const note = progress.unlockNext();
     if (note) {
-      notify('🔓', `Nota sbloccata: ${note.displayName}`, note.englishName);
+      notify('🔓', t('Nota sbloccata: {note}', { note: note.displayName }), note.englishName);
       setPhase('intro');
     }
   }, [progress, notify]);
@@ -284,15 +289,19 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
     steps.push({
       key: 'lettura',
       icon: Eye,
-      title: progress.due > 0 ? 'Ripasso di lettura' : 'Lettura',
+      title: progress.due > 0 ? t('Ripasso di lettura') : t('Lettura'),
       detail:
         progress.due > 0
-          ? `${progress.due} ${progress.due === 1 ? 'nota torna' : 'note tornano'} oggi, prima di dimenticarle`
+          ? progress.due === 1
+            ? t('1 nota torna oggi, prima di dimenticarle')
+            : t('{n} note tornano oggi, prima di dimenticarle', { n: progress.due })
           : unseen > 0
-            ? `${unseen} ${unseen === 1 ? 'nota' : 'note'} da provare per la prima volta`
+            ? unseen === 1
+              ? t('1 nota da provare per la prima volta')
+              : t('{n} note da provare per la prima volta', { n: unseen })
             : newestNote && !progress.canUnlockNext && !progress.isComplete
-              ? `${newestNote.displayName}: ${readiness(newestCard)} per sbloccare la prossima`
-              : 'una sessione breve per restare sciolto',
+              ? t('{note}: {state} per sbloccare la prossima', { note: newestNote.displayName, state: readiness(newestCard) })
+              : t('una sessione breve per restare sciolto'),
       done: progress.due === 0 && today.answers >= sessionLength,
       action: { kind: 'session' },
     });
@@ -302,8 +311,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       steps.push({
         key: 'nuova',
         icon: Unlock,
-        title: `Nota nuova: ${next?.displayName ?? ''}`,
-        detail: `${newestNote?.displayName} ti viene automatica: è il momento di aggiungerne una`,
+        title: t('Nota nuova: {note}', { note: next?.displayName ?? '' }),
+        detail: t('{note} ti viene automatica: è il momento di aggiungerne una', { note: String(newestNote?.displayName) }),
         done: false,
         action: { kind: 'unlock' },
       });
@@ -315,8 +324,10 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       steps.push({
         key: 'teoria',
         icon: BookOpen,
-        title: 'Ripasso di teoria',
-        detail: `${progress.theoryDue.length} ${progress.theoryDue.length === 1 ? 'esercizio sbagliato torna' : 'esercizi sbagliati tornano'} oggi`,
+        title: t('Ripasso di teoria'),
+        detail: progress.theoryDue.length === 1
+          ? t('1 esercizio sbagliato torna oggi')
+          : t('{n} esercizi sbagliati tornano oggi', { n: progress.theoryDue.length }),
         done: false,
         action: { kind: 'go', tab: 'technique', intent: { review: true } },
       });
@@ -324,8 +335,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       steps.push({
         key: 'teoria',
         icon: BookOpen,
-        title: `Lezione: ${nextLesson.title}`,
-        detail: `${nextLesson.minutes}′ · ${nextLesson.goal}`,
+        title: t('Lezione: {title}', { title: t(nextLesson.title) }),
+        detail: `${nextLesson.minutes}′ · ${t(nextLesson.goal)}`,
         done: theoryDone,
         action: { kind: 'go', tab: 'technique', intent: { lessonId: nextLesson.id } },
       });
@@ -333,8 +344,8 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       steps.push({
         key: 'teoria',
         icon: BookOpen,
-        title: 'Lettura ritmica',
-        detail: `livello ${data.rhythm.level}: leggi una figura e battila a tempo`,
+        title: t('Lettura ritmica'),
+        detail: t('livello {n}: leggi una figura e battila a tempo', { n: data.rhythm.level }),
         done: theoryDone,
         action: { kind: 'go', tab: 'technique', intent: { rhythm: true } },
       });
@@ -344,25 +355,25 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
     // come "leggio:melodia-<id>"; la vecchia lettura lo salvava con l'id.
     const best = (id: string) => Math.max(data.melodyBest[id] ?? 0, data.melodyBest[`leggio:melodia-${id}`] ?? 0);
     const song = melodies.find(
-      m => m.requiredToneNotes.every(t => learned.includes(t)) && best(m.id) < 100,
+      m => m.requiredToneNotes.every(tn => learned.includes(tn)) && best(m.id) < 100,
     );
     steps.push(
       song
         ? {
             key: 'musica',
             icon: Music,
-            title: `Suona: ${song.title}`,
+            title: t('Suona: {title}', { title: t(song.title) }),
             detail: best(song.id) > 0
-              ? `record ${best(song.id)}%: punta al 100%`
-              : `${song.notes.length} note, tutte fra quelle che sai leggere`,
+              ? t('record {n}%: punta al 100%', { n: best(song.id) })
+              : t('{n} note, tutte fra quelle che sai leggere', { n: song.notes.length }),
             done: (today.songs ?? 0) > 0,
             action: { kind: 'go', tab: 'melody', intent: { melodyId: song.id } },
           }
         : {
             key: 'musica',
             icon: Music,
-            title: 'Un brano',
-            detail: 'nel Leggio: un gruppo di battute, prima a mani separate',
+            title: t('Un brano'),
+            detail: t('nel Leggio: un gruppo di battute, prima a mani separate'),
             done: (today.songs ?? 0) > 0,
             action: { kind: 'go', tab: 'melody', intent: { pieces: true } },
           },
@@ -381,8 +392,7 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
       <PlacementTest
         onComplete={(count, answers) => {
           progress.completePlacement(count, answers);
-          const label = count <= 1 ? 'dalla prima nota' : `${count} note già sbloccate`;
-          notify('🎓', 'Punto di partenza fissato', `Si parte ${count <= 1 ? label : `con ${label}`}.`);
+          notify('🎓', t('Punto di partenza fissato'), count <= 1 ? t('Si parte dalla prima nota.') : t('Si parte con {n} note già sbloccate.', { n: count }));
         }}
       />
     );
@@ -475,13 +485,13 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
         className="flex min-h-72 flex-col justify-end rounded-[24px] p-5 sm:min-h-80"
       >
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-          {allDone ? 'Piano completato' : `Prossimo · ${nextIdx + 1} di ${plan.length}`}
+          {allDone ? t('Piano completato') : t('Prossimo · {n} di {total}', { n: nextIdx + 1, total: plan.length })}
         </p>
         <p className="mt-1 text-[26px] font-bold leading-tight tracking-tight text-white">
-          {allDone ? 'Fatto, per oggi.' : next?.title}
+          {allDone ? t('Fatto, per oggi.') : next?.title}
         </p>
         <p className="mt-1 max-w-md text-sm leading-snug text-white/75">
-          {allDone ? 'Se hai ancora voglia: un brano nel Leggio o uno sprint.' : next?.detail}
+          {allDone ? t('Se hai ancora voglia: un brano nel Leggio o uno sprint.') : next?.detail}
         </p>
         <div className="mt-4 flex items-center gap-4">
           <button
@@ -489,16 +499,16 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
             onClick={() => (next ? runStep(next.action) : onNavigate('melody', { pieces: true }))}
             className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[15px] font-semibold text-black active:scale-[0.97]"
           >
-            <Play className="h-4 w-4 fill-black" /> {allDone ? 'Apri i brani' : 'Continua'}
+            <Play className="h-4 w-4 fill-black" /> {allDone ? t('Apri i brani') : t('Continua')}
           </button>
           <div className="text-white/80">
             <span className="text-lg font-semibold tabular-nums text-white">{progress.todayMinutes}</span>
-            <span className="ml-1 text-xs">min oggi</span>
+            <span className="ml-1 text-xs">{t('min oggi')}</span>
           </div>
         </div>
       </ImageCover>
 
-      <Section label="Il piano di oggi" action={<span className="text-xs font-medium tabular-nums text-ink3">{doneCount}/{plan.length}</span>}>
+      <Section label={t('Il piano di oggi')} action={<span className="text-xs font-medium tabular-nums text-ink3">{doneCount}/{plan.length}</span>}>
         <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface">
           {plan.map((step, i) => (
             <PlanRow key={step.key} step={step} n={i + 1} isNext={i === nextIdx} onRun={runStep} />
@@ -506,78 +516,78 @@ export function PracticeView({ progress, audio, mic, notify, onNavigate }: Pract
         </div>
       </Section>
 
-      <Section label="Lettura delle note">
+      <Section label={t('Lettura delle note')}>
       <Card className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-ink">Sessione di lettura</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-ink">{t('Sessione di lettura')}</h2>
             <p className="mt-0.5 text-sm text-ink2">
-              {unlockedNotes.length} note nel tuo repertorio
+              {t('{n} note nel tuo repertorio', { n: unlockedNotes.length })}
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {progress.due > 0 && <Pill tone="warn">{progress.due} da ripassare</Pill>}
-            {progress.canUnlockNext && <Pill tone="good">nota nuova pronta</Pill>}
+            {progress.due > 0 && <Pill tone="warn">{t('{n} da ripassare', { n: progress.due })}</Pill>}
+            {progress.canUnlockNext && <Pill tone="good">{t('nota nuova pronta')}</Pill>}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs text-ink3">
           <Pill>
             <Timer className="h-3 w-3" />
-            {sessionLength} domande
+            {t('{n} domande', { n: sessionLength })}
           </Pill>
           <Pill>
-            {settings.readInput === 'names' ? 'rispondi coi nomi' : 'rispondi sulla tastiera'}
+            {settings.readInput === 'names' ? t('rispondi coi nomi') : t('rispondi sulla tastiera')}
           </Pill>
-          {mic.isListening && <Pill tone="brand">microfono attivo</Pill>}
+          {mic.isListening && <Pill tone="brand">{t('microfono attivo')}</Pill>}
         </div>
 
         <Btn full onClick={() => startSession()}>
           <Play className="h-4 w-4" />
-          Inizia
+          {t('Inizia')}
         </Btn>
 
         {weakIds.length > 0 && (
           <Btn variant="soft" full onClick={() => startSession(weakIds)}>
             <Target className="h-4 w-4" />
-            Allena le {weakIds.length} note più incerte
+            {t('Allena le {n} note più incerte', { n: weakIds.length })}
           </Btn>
         )}
       </Card>
       </Section>
 
       {confusions.length > 0 && (
-        <Section label="Le note che confondi">
+        <Section label={t('Le note che confondi')}>
         <Card>
           <div className="space-y-1.5">
             {confusions.map(c => (
               <p key={`${c.note.id}>${c.given}`} className="text-sm text-ink2">
                 <span className="font-bold text-ink">
                   {c.note.displayName}
-                  {c.note.clef === 'bass' ? ' (basso)' : ''}
+                  {c.note.clef === 'bass' ? ` ${t('(basso)')}` : ''}
                 </span>{' '}
-                letta come <span className="font-bold text-ink">{italianOf(c.given)}</span>{' '}
-                <span className="text-xs text-ink3">· {KIND_LABEL[c.mistake.kind]} · {c.count}×</span>
+                {t('letta come')} <span className="font-bold text-ink">{italianOf(c.given)}</span>{' '}
+                <span className="text-xs text-ink3">· {t(KIND_LABEL[c.mistake.kind])} · {c.count}×</span>
               </p>
             ))}
           </div>
           <p className="mt-2 text-xs leading-relaxed text-ink3">
-            Allenarle una accanto all'altra, mescolate, è il modo più veloce per smettere di scambiarle.
+            {t('Allenarle una accanto all\'altra, mescolate, è il modo più veloce per smettere di scambiarle.')}
           </p>
           <Btn variant="soft" full className="mt-3" onClick={() => startSession(drillIds(confusions))}>
             <Target className="h-4 w-4" />
-            Allenale insieme
+            {t('Allenale insieme')}
           </Btn>
         </Card>
         </Section>
       )}
 
       {isFirstEver && (
-        <Section label="Come funziona">
+        <Section label={t('Come funziona')}>
         <Panel className="space-y-2 px-4 py-3 text-sm leading-relaxed text-ink2">
-          <p>1. Una nota alla volta: si sblocca la successiva solo quando la precedente ti viene automatica.</p>
-          <p>2. Le note tornano quando stai per dimenticarle — non a caso: è ripetizione spaziata.</p>
-          <p>3. Se hai un piano vero, tocca 🎤 in alto e rispondi suonando: è il modo più efficace.</p>
+          <p>{t('1. Una nota alla volta: si sblocca la successiva solo quando la precedente ti viene automatica.')}</p>
+          <p>{t('2. Le note tornano quando stai per dimenticarle — non a caso: è ripetizione spaziata.')}</p>
+          <p>{t('3. Se hai un piano vero, tocca 🎤 in alto e rispondi suonando: è il modo più efficace.')}</p>
         </Panel>
         </Section>
       )}

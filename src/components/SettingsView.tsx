@@ -11,6 +11,7 @@ import type { Settings } from '../lib/storage';
 import { exportState, importState } from '../lib/storage';
 import type { ProgressApi } from '../hooks/useProgress';
 import { Bar, Btn, Card, PageHeader, Panel, Pill, SectionTitle } from './ui';
+import { LANGS, setLang, t, useLang } from '../i18n';
 import { IMAGE_CREDITS } from '../data/images';
 import type { MicRecording, MicStats } from '../lib/micRecorder';
 import { recordMic } from '../lib/micRecorder';
@@ -30,14 +31,13 @@ function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggl
   const strong = mic.level > 0.3;
   return (
     <Card>
-      <SectionTitle>Microfono</SectionTitle>
+      <SectionTitle>{t('Microfono')}</SectionTitle>
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs leading-relaxed text-ink3">
-          Con il microfono rispondi suonando sul piano vero, in tutti gli esercizi. Nelle letture una nota alla
-          volta; nei brani anche gli accordi, suonati insieme.
+          {t('Con il microfono rispondi suonando sul piano vero, in tutti gli esercizi. Nelle letture una nota alla volta; nei brani anche gli accordi, suonati insieme.')}
         </p>
         <Pill tone={mic.isListening ? (strong ? 'good' : 'warn') : 'neutral'}>
-          {mic.isListening ? (strong ? 'segnale pronto' : 'suona una nota') : 'spento'}
+          {mic.isListening ? (strong ? t('segnale pronto') : t('suona una nota')) : t('spento')}
         </Pill>
       </div>
       {mic.isListening && (
@@ -45,19 +45,18 @@ function MicCheck({ mic, onToggleMic }: Pick<SettingsViewProps, 'mic' | 'onToggl
           <Bar pct={Math.min(1, mic.level)} color={strong ? 'bg-emerald-500' : 'bg-amber-500'} />
           <div className="flex items-center justify-between text-xs text-ink2">
             <span>
-              {mic.liveNote ? `Sento: ${italianOf(mic.liveNote.name)}${mic.liveNote.octave}` : 'In ascolto…'}
+              {mic.liveNote ? t('Sento: {note}', { note: `${italianOf(mic.liveNote.name)}${mic.liveNote.octave}` }) : t('In ascolto…')}
             </span>
-            <span className="tabular-nums">livello {Math.round(mic.level * 100)}%</span>
+            <span className="tabular-nums">{t('livello {n}%', { n: Math.round(mic.level * 100) })}</span>
           </div>
           <p className="text-[11px] leading-relaxed text-ink3">
-            Suona tre note a volume normale e controlla che il nome sia giusto. Se la barra resta bassa avvicina il
-            telefono; se si muove anche nel silenzio, allontanalo dalla fonte di rumore.
+            {t('Suona tre note a volume normale e controlla che il nome sia giusto. Se la barra resta bassa avvicina il telefono; se si muove anche nel silenzio, allontanalo dalla fonte di rumore.')}
           </p>
         </div>
       )}
       <Btn variant={mic.isListening ? 'soft' : 'primary'} full className="mt-3" onClick={onToggleMic}>
         {mic.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-        {mic.isListening ? 'Spegni il microfono' : 'Accendi e prova'}
+        {mic.isListening ? t('Spegni il microfono') : t('Accendi e prova')}
       </Btn>
     </Card>
   );
@@ -79,7 +78,7 @@ function MicDiagnosis({ micOn }: { micOn: boolean }) {
     setState('recording');
     setRec(null);
     try {
-      const r = await recordMic(SECONDS, (t, l) => { setElapsed(t); setLevel(l); }, micOn);
+      const r = await recordMic(SECONDS, (sec, lv) => { setElapsed(sec); setLevel(lv); }, micOn);
       setRec(r);
       setState('done');
     } catch {
@@ -88,7 +87,16 @@ function MicDiagnosis({ micOn }: { micOn: boolean }) {
   };
 
   const summary = (st: MicStats) =>
-    `Rumore di fondo ${st.noiseDb} dB · colpi da ${st.hitsDb[0] ?? '–'} a ${st.hitsDb[st.hitsDb.length - 1] ?? '–'} dB (${st.hitsDb.length}) · picco ${st.peakDb} dB${st.clipped ? ' (saturato)' : ''} · ${st.sampleRate} Hz · ${st.applied}`;
+    t('Rumore di fondo {noise} dB · colpi da {from} a {to} dB ({n}) · picco {peak} dB{clip} · {rate} Hz · {applied}', {
+      noise: st.noiseDb,
+      from: st.hitsDb[0] ?? '–',
+      to: st.hitsDb[st.hitsDb.length - 1] ?? '–',
+      n: st.hitsDb.length,
+      peak: st.peakDb,
+      clip: st.clipped ? ` ${t('(saturato)')}` : '',
+      rate: st.sampleRate,
+      applied: st.applied,
+    });
 
   const share = async () => {
     if (!rec) return;
@@ -97,7 +105,7 @@ function MicDiagnosis({ micOn }: { micOn: boolean }) {
     const text = summary(rec.stats);
     try {
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Prova del microfono', text });
+        await navigator.share({ files: [file], title: t('Prova del microfono'), text });
         return;
       }
     } catch {
@@ -112,32 +120,30 @@ function MicDiagnosis({ micOn }: { micOn: boolean }) {
 
   return (
     <Card>
-      <SectionTitle hint="per tarare il riconoscimento sul tuo pianoforte">Registra una prova</SectionTitle>
+      <SectionTitle hint={t('per tarare il riconoscimento sul tuo pianoforte')}>{t('Registra una prova')}</SectionTitle>
       <p className="px-1 text-xs leading-relaxed text-ink3">
-        Premi Registra, resta in silenzio 3 secondi, poi suona: cinque note piano, cinque note forti, tre accordi e
-        una scala veloce. Dura {SECONDS} secondi. Poi manda il file: dentro c'è solo il suono, e resta sul tuo
-        dispositivo finché non lo condividi tu.
+        {t('Premi Registra, resta in silenzio 3 secondi, poi suona: cinque note piano, cinque note forti, tre accordi e una scala veloce. Dura {s} secondi. Poi manda il file: dentro c\'è solo il suono, e resta sul tuo dispositivo finché non lo condividi tu.', { s: SECONDS })}
       </p>
       {state === 'recording' && (
         <div className="mt-3 space-y-1.5">
           <Bar pct={elapsed / SECONDS} />
           <div className="flex items-center justify-between text-xs text-ink2">
-            <span>{elapsed < 3 ? 'Silenzio…' : 'Suona!'}</span>
-            <span className="tabular-nums">{Math.max(0, Math.ceil(SECONDS - elapsed))} s · livello {Math.round(level * 100)}%</span>
+            <span>{elapsed < 3 ? t('Silenzio…') : t('Suona!')}</span>
+            <span className="tabular-nums">{t('{s} s · livello {n}%', { s: Math.max(0, Math.ceil(SECONDS - elapsed)), n: Math.round(level * 100) })}</span>
           </div>
         </div>
       )}
       {state === 'done' && rec && (
         <p className="mt-3 rounded-xl bg-surface2 px-3 py-2 text-[12px] leading-relaxed text-ink2">{summary(rec.stats)}</p>
       )}
-      {state === 'error' && <p className="mt-3 text-xs text-red-400">Non riesco ad aprire il microfono: controlla il permesso.</p>}
+      {state === 'error' && <p className="mt-3 text-xs text-red-400">{t('Non riesco ad aprire il microfono: controlla il permesso.')}</p>}
       <div className="mt-3 flex gap-2">
         <Btn variant={state === 'done' ? 'soft' : 'primary'} full onClick={start} disabled={state === 'recording'}>
-          <Mic className="h-4 w-4" /> {state === 'done' ? 'Registra di nuovo' : 'Registra'}
+          <Mic className="h-4 w-4" /> {state === 'done' ? t('Registra di nuovo') : t('Registra')}
         </Btn>
         {state === 'done' && rec && (
           <Btn full onClick={share}>
-            <Share2 className="h-4 w-4" /> Manda il file
+            <Share2 className="h-4 w-4" /> {t('Manda il file')}
           </Btn>
         )}
       </div>
@@ -250,6 +256,7 @@ function NumberStepper({
 
 export function SettingsView({ progress, onTestSound, mic, onToggleMic }: SettingsViewProps) {
   const { settings, setSettings } = progress;
+  const lang = useLang();
   const [message, setMessage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -263,7 +270,7 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
     a.download = `piano-trainer-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setMessage('Progresso esportato.');
+    setMessage(t('Progresso esportato.'));
   };
 
   const doImport = (file: File) => {
@@ -272,97 +279,115 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
       .then(text => {
         const parsed = importState(text);
         if (!parsed) {
-          setMessage('File non valido.');
+          setMessage(t('File non valido.'));
           return;
         }
         progress.replaceState(parsed);
-        setMessage('Progresso importato.');
+        setMessage(t('Progresso importato.'));
       })
-      .catch(() => setMessage('Non è stato possibile leggere il file.'));
+      .catch(() => setMessage(t('Non è stato possibile leggere il file.')));
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Opzioni" />
+      <PageHeader title={t('Opzioni')} />
       <Card>
-        <SectionTitle>Studio</SectionTitle>
+        {/* Il titolo è nelle tre lingue: chi non legge l'italiano deve trovarlo. */}
+        <SectionTitle>Lingua · Language · Langue</SectionTitle>
+        <div className="mt-2 flex gap-2">
+          {LANGS.map(l => (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => void setLang(l.id)}
+              className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                lang === l.id ? 'border-brand bg-brand/15 text-ink' : 'border-line text-ink2'
+              }`}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+      </Card>
+      <Card>
+        <SectionTitle>{t('Studio')}</SectionTitle>
         <Row
-          title="Suona la nota prima della risposta"
-          desc="Consigliato spento: se senti la nota prima, alleni l'orecchio e non la lettura."
+          title={t('Suona la nota prima della risposta')}
+          desc={t('Consigliato spento: se senti la nota prima, alleni l\'orecchio e non la lettura.')}
         >
           <Toggle on={settings.hintSoundBefore} onChange={v => set('hintSoundBefore', v)} />
         </Row>
-        <Row title="Suona la nota dopo la risposta" desc="Collega il segno scritto al suono reale.">
+        <Row title={t('Suona la nota dopo la risposta')} desc={t('Collega il segno scritto al suono reale.')}>
           <Toggle on={settings.soundOnReveal} onChange={v => set('soundOnReveal', v)} />
         </Row>
-        <Row title="Aiuto automatico" desc="Dopo 6 secondi compare il suggerimento sul riferimento.">
+        <Row title={t('Aiuto automatico')} desc={t('Dopo 6 secondi compare il suggerimento sul riferimento.')}>
           <Toggle on={settings.autoHint} onChange={v => set('autoHint', v)} />
         </Row>
-        <Row title="Cronometro" desc="La barra che scorre ricorda che conta anche la velocità.">
+        <Row title={t('Cronometro')} desc={t('La barra che scorre ricorda che conta anche la velocità.')}>
           <Toggle on={settings.showTimer} onChange={v => set('showTimer', v)} />
         </Row>
-        <Row title="Domande per sessione" desc="Meglio sessioni brevi e frequenti che una lunga.">
+        <Row title={t('Domande per sessione')} desc={t('Meglio sessioni brevi e frequenti che una lunga.')}>
           <NumberStepper value={settings.sessionLength} min={4} max={30} step={2} onChange={v => set('sessionLength', v)} />
         </Row>
-        <Row title="Obiettivo giornaliero" desc="Risposte al giorno per tenere viva la serie.">
+        <Row title={t('Obiettivo giornaliero')} desc={t('Risposte al giorno per tenere viva la serie.')}>
           <NumberStepper value={settings.dailyGoal} min={10} max={200} step={10} onChange={v => set('dailyGoal', v)} />
         </Row>
-        <Row title="Ottava obbligatoria" desc="Nell'esercizio sulla tastiera pretende anche l'ottava esatta.">
+        <Row title={t('Ottava obbligatoria')} desc={t('Nell\'esercizio sulla tastiera pretende anche l\'ottava esatta.')}>
           <Toggle on={settings.strictOctave} onChange={v => set('strictOctave', v)} />
         </Row>
       </Card>
 
       <Card>
-        <SectionTitle>Aspetto</SectionTitle>
-        <Row title="Tema">
+        <SectionTitle>{t('Aspetto')}</SectionTitle>
+        <Row title={t('Tema')}>
           <button
             type="button"
             onClick={() => set('theme', settings.theme === 'dark' ? 'light' : 'dark')}
             className="flex items-center gap-2 rounded-lg border border-line bg-surface2 px-3 py-1.5 text-xs font-bold text-ink2"
           >
             {settings.theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            {settings.theme === 'dark' ? 'Scuro' : 'Chiaro'}
+            {settings.theme === 'dark' ? t('Scuro') : t('Chiaro')}
           </button>
         </Row>
-        <Row title="Nomi delle note">
+        <Row title={t('Nomi delle note')}>
           <Choice<NameStyle>
             value={settings.noteNames}
             onChange={v => set('noteNames', v)}
             options={[
               { value: 'it', label: 'Do Re Mi' },
               { value: 'en', label: 'C D E' },
-              { value: 'both', label: 'Entrambi' },
+              { value: 'both', label: t('Entrambi') },
             ]}
           />
         </Row>
-        <Row title="Etichette sulla tastiera">
+        <Row title={t('Etichette sulla tastiera')}>
           <Choice
             value={settings.keyLabels}
             onChange={v => set('keyLabels', v)}
             options={[
-              { value: 'all', label: 'Tutte' },
-              { value: 'c', label: 'Solo Do' },
-              { value: 'none', label: 'Nessuna' },
+              { value: 'all', label: t('Tutte') },
+              { value: 'c', label: t('Solo Do') },
+              { value: 'none', label: t('Nessuna') },
             ]}
           />
         </Row>
-        <Row title="Come rispondere">
+        <Row title={t('Come rispondere')}>
           <Choice
             value={settings.readInput}
             onChange={v => set('readInput', v)}
             options={[
-              { value: 'names', label: 'Nomi' },
-              { value: 'keys', label: 'Tastiera' },
+              { value: 'names', label: t('Nomi') },
+              { value: 'keys', label: t('Tastiera') },
             ]}
           />
         </Row>
-        <Row title="Testo grande" desc="Aumenta testi e bersagli tattili senza ingrandire lo spartito.">
+        <Row title={t('Testo grande')} desc={t('Aumenta testi e bersagli tattili senza ingrandire lo spartito.')}>
           <Toggle on={settings.largeText} onChange={v => set('largeText', v)} />
         </Row>
-        <Row title="Contrasto alto" desc="Rende più nette superfici, linee e stati corretti o sbagliati.">
+        <Row title={t('Contrasto alto')} desc={t('Rende più nette superfici, linee e stati corretti o sbagliati.')}>
           <Toggle on={settings.highContrast} onChange={v => set('highContrast', v)} />
         </Row>
-        <Row title="Riduci animazioni" desc="Evita movimenti non essenziali durante lo studio.">
+        <Row title={t('Riduci animazioni')} desc={t('Evita movimenti non essenziali durante lo studio.')}>
           <Toggle on={settings.reducedMotion} onChange={v => set('reducedMotion', v)} />
         </Row>
       </Card>
@@ -371,10 +396,10 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
       <MicDiagnosis micOn={mic.isListening} />
 
       <Card>
-        <SectionTitle>Suono e vibrazione</SectionTitle>
+        <SectionTitle>{t('Suono e vibrazione')}</SectionTitle>
         <Row
-          title={`Volume ${Math.round(settings.volume * 100)}%`}
-          desc={settings.volume < 0.35 ? 'Basso: è il volume dell\'app, si somma a quello del telefono.' : undefined}
+          title={t('Volume {n}%', { n: Math.round(settings.volume * 100) })}
+          desc={settings.volume < 0.35 ? t('Basso: è il volume dell\'app, si somma a quello del telefono.') : undefined}
         >
           <input
             type="range"
@@ -383,36 +408,36 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
             value={Math.round(settings.volume * 100)}
             onChange={e => set('volume', Number(e.target.value) / 100)}
             className="w-32 accent-[var(--c-brand)]"
-            aria-label="Volume"
+            aria-label={t('Volume')}
           />
         </Row>
         <Row
-          title="Prova il suono"
-          desc="Non senti nulla sul telefono? Su iPhone controlla anche l'interruttore del silenzioso e il volume multimediale."
+          title={t('Prova il suono')}
+          desc={t('Non senti nulla sul telefono? Su iPhone controlla anche l\'interruttore del silenzioso e il volume multimediale.')}
         >
           <Btn variant="soft" onClick={onTestSound} className="px-3 py-2">
             <Volume2 className="h-4 w-4" />
-            Prova
+            {t('Prova')}
           </Btn>
         </Row>
-        <Row title="Metronomo nelle canzoni" desc="Batte il tempo mentre ascolti la melodia.">
+        <Row title={t('Metronomo nelle canzoni')} desc={t('Batte il tempo mentre ascolti la melodia.')}>
           <Toggle on={settings.metronome} onChange={v => set('metronome', v)} />
         </Row>
-        <Row title="Vibrazione" desc="Conferma tattile delle risposte sul telefono.">
+        <Row title={t('Vibrazione')} desc={t('Conferma tattile delle risposte sul telefono.')}>
           <Toggle on={settings.haptics} onChange={v => set('haptics', v)} />
         </Row>
       </Card>
 
       <Card>
-        <SectionTitle>Dati</SectionTitle>
+        <SectionTitle>{t('Dati')}</SectionTitle>
         <div className="flex flex-wrap gap-2 pt-1">
           <Btn variant="soft" onClick={doExport}>
             <Download className="h-4 w-4" />
-            Esporta
+            {t('Esporta')}
           </Btn>
           <Btn variant="soft" onClick={() => fileRef.current?.click()}>
             <Upload className="h-4 w-4" />
-            Importa
+            {t('Importa')}
           </Btn>
           <input
             ref={fileRef}
@@ -428,42 +453,40 @@ export function SettingsView({ progress, onTestSound, mic, onToggleMic }: Settin
           <Btn
             variant="danger"
             onClick={() => {
-              if (window.confirm('Azzerare tutto il progresso? Non si può tornare indietro.')) {
+              if (window.confirm(t('Azzerare tutto il progresso? Non si può tornare indietro.'))) {
                 progress.resetAll();
-                setMessage('Progresso azzerato.');
+                setMessage(t('Progresso azzerato.'));
               }
             }}
           >
             <RotateCcw className="h-4 w-4" />
-            Azzera
+            {t('Azzera')}
           </Btn>
         </div>
         {message && <p className="mt-2 text-xs text-ink2">{message}</p>}
       </Card>
 
       <Panel className="px-4 py-3 text-[11px] leading-relaxed text-ink3">
-        Il progresso resta su questo dispositivo (nessun account, nessun server). Usa Esporta prima di
-        cambiare telefono o cancellare i dati del browser.
+        {t('Il progresso resta su questo dispositivo (nessun account, nessun server). Usa Esporta prima di cambiare telefono o cancellare i dati del browser.')}
       </Panel>
 
       <Card>
-        <SectionTitle>Crediti</SectionTitle>
+        <SectionTitle>{t('Crediti')}</SectionTitle>
         <div className="space-y-2 px-1 text-[12px] leading-relaxed text-ink3">
           <p>
-            Partiture complete di Bach, Beethoven, Mozart, Schubert, Schumann e Chopin (op. 10 n. 3, Marcia
-            funebre): dataset ASAP, Foscarin et al., licenza CC BY-NC-SA 4.0.
+            {t('Partiture complete di Bach, Beethoven, Mozart, Schubert, Schumann e Chopin (op. 10 n. 3, Marcia funebre): dataset ASAP, Foscarin et al., licenza CC BY-NC-SA 4.0.')}
           </p>
-          <p>Suono del pianoforte: Salamander Grand Piano.</p>
+          <p>{t('Suono del pianoforte: Salamander Grand Piano.')}</p>
           {IMAGE_CREDITS.length > 0 && (
             <div>
-              <p>Immagini (Wikimedia Commons, pubblico dominio o CC0):</p>
+              <p>{t('Immagini (Wikimedia Commons, pubblico dominio o CC0):')}</p>
               <ul className="mt-1 space-y-0.5">
                 {IMAGE_CREDITS.map(c => (
                   <li key={c.url}>
                     <a href={c.url} target="_blank" rel="noreferrer" className="underline decoration-line underline-offset-2 hover:text-ink2">
-                      {c.what}
+                      {t(c.what)}
                     </a>{' '}
-                    — {c.author} · {c.license}
+                    — {t(c.author)} · {t(c.license)}
                   </li>
                 ))}
               </ul>

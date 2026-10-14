@@ -4,11 +4,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Clef, NoteEntry } from '../types';
+import { getLang, t } from '../i18n';
 
 export const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const;
 
 export const IT_NAMES: Record<string, string> = {
-  C: 'Do', D: 'Re', E: 'Mi', F: 'Fa', G: 'Sol', A: 'La', B: 'Si',
+  C: 'Do',
+  // In francese si scrive "Ré": il nome si legge al momento dell'uso, segue la lingua.
+  get D() { return getLang() === 'fr' ? 'Ré' : 'Re'; },
+  E: 'Mi', F: 'Fa', G: 'Sol', A: 'La', B: 'Si',
 };
 
 const SEMITONE: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -97,6 +101,15 @@ export function englishOf(note: string): string {
   return letter + accSymbol(acc);
 }
 
+/**
+ * Il nome di una nota dentro una frase già scritta (aiuti, diagnosi): lettere
+ * in inglese, Do Re Mi (Do Ré Mi) nelle altre lingue. Non dipende dall'opzione
+ * "Nomi delle note", che governa i pulsanti e le etichette.
+ */
+export function nameInText(note: string): string {
+  return getLang() === 'en' ? englishOf(note) : italianOf(note);
+}
+
 export type NameStyle = 'it' | 'en' | 'both';
 
 /** Etichetta secondo la preferenza dell'utente. */
@@ -168,7 +181,17 @@ export function staffSlot(note: string, clef: Clef): number {
   return diatonicOf(note) - BOTTOM_LINE[clef];
 }
 
-const ord = (n: number) => `${n}ª`;
+/** Il numero ordinale: 1ª in italiano, 1st in inglese, 1re / 1er in francese. */
+const ord = (n: number, masc = false): string => {
+  const lang = getLang();
+  if (lang === 'en') {
+    const rest = n % 100;
+    const suffix = rest >= 11 && rest <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+    return `${n}${suffix}`;
+  }
+  if (lang === 'fr') return n === 1 ? (masc ? '1er' : '1re') : `${n}e`;
+  return `${n}ª`;
+};
 
 /**
  * Descrizione della posizione, generata (non scritta a mano ⇒ sempre corretta).
@@ -179,23 +202,23 @@ export function describePosition(note: string, clef: Clef): string {
 
   if (slot >= 0 && slot <= 8) {
     return slot % 2 === 0
-      ? `${ord(slot / 2 + 1)} linea del pentagramma`
-      : `${ord((slot + 1) / 2)} spazio del pentagramma`;
+      ? t('{ord} linea del pentagramma', { ord: ord(slot / 2 + 1) })
+      : t('{ord} spazio del pentagramma', { ord: ord((slot + 1) / 2, true) });
   }
 
   if (slot < 0) {
     const k = -slot;
-    if (k % 2 === 0) return `${ord(k / 2)} linea aggiuntiva sotto il pentagramma`;
+    if (k % 2 === 0) return t('{ord} linea aggiuntiva sotto il pentagramma', { ord: ord(k / 2) });
     return k === 1
-      ? 'spazio sotto la prima linea'
-      : `spazio sotto la ${ord((k - 1) / 2)} linea aggiuntiva`;
+      ? t('spazio sotto la prima linea')
+      : t('spazio sotto la {ord} linea aggiuntiva', { ord: ord((k - 1) / 2) });
   }
 
   const m = slot - 8;
-  if (m % 2 === 0) return `${ord(m / 2)} linea aggiuntiva sopra il pentagramma`;
+  if (m % 2 === 0) return t('{ord} linea aggiuntiva sopra il pentagramma', { ord: ord(m / 2) });
   return m === 1
-    ? 'spazio sopra la quinta linea'
-    : `spazio sopra la ${ord((m - 1) / 2)} linea aggiuntiva`;
+    ? t('spazio sopra la quinta linea')
+    : t('spazio sopra la {ord} linea aggiuntiva', { ord: ord((m - 1) / 2) });
 }
 
 /** true se la nota poggia su una linea (utile per il colpo d'occhio linea/spazio). */
@@ -214,6 +237,7 @@ export interface Landmark {
   short: string;
 }
 
+/** Etichette e nomi brevi in italiano: si traducono quando si mostrano. */
 export const LANDMARKS: Landmark[] = [
   { clef: 'treble', note: 'C4', label: 'Do centrale', short: 'Do centrale' },
   { clef: 'treble', note: 'G4', label: 'Sol della chiave di violino (2ª linea)', short: 'Sol (2ª linea)' },
@@ -225,7 +249,7 @@ export const LANDMARKS: Landmark[] = [
   { clef: 'bass', note: 'C4', label: 'Do centrale', short: 'Do centrale' },
 ];
 
-const STEP_WORDS = ['', 'un grado', 'due gradi', 'tre gradi', 'quattro gradi', 'cinque gradi', 'sei gradi'];
+export const STEP_WORDS = ['', 'un grado', 'due gradi', 'tre gradi', 'quattro gradi', 'cinque gradi', 'sei gradi'];
 
 /** "due gradi sopra il Do centrale" — l'aiuto che insegna a leggere per riferimenti. */
 export function landmarkHint(note: string, clef: Clef): string {
@@ -238,10 +262,11 @@ export function landmarkHint(note: string, clef: Clef): string {
     if (d < bestDist) { best = l; bestDist = d; }
   }
   if (!best) return describePosition(note, clef);
-  if (bestDist === 0) return `È una nota di riferimento: ${best.label}`;
+  if (bestDist === 0) return t('È una nota di riferimento: {ref}', { ref: t(best.label) });
   const dir = diatonicOf(best.note) < target ? 'sopra' : 'sotto';
-  const steps = STEP_WORDS[bestDist] ?? `${bestDist} gradi`;
-  return `${steps} ${dir} il ${best.short}`;
+  const word = STEP_WORDS[bestDist];
+  const steps = word === undefined ? t('{n} gradi', { n: bestDist }) : t(word);
+  return `${steps} ${t(`${dir} il ${best.short}`)}`;
 }
 
 export function isLandmark(note: string, clef: Clef): boolean {
@@ -250,7 +275,7 @@ export function isLandmark(note: string, clef: Clef): boolean {
 
 // ── Intervalli (lettura per distanze) ───────────────────────────────────────
 
-const INTERVAL_NAMES = [
+export const INTERVAL_NAMES = [
   'unisono', 'seconda', 'terza', 'quarta', 'quinta', 'sesta', 'settima', 'ottava',
 ];
 
@@ -258,8 +283,9 @@ const INTERVAL_NAMES = [
 export function intervalLabel(from: string, to: string): string {
   const d = diatonicOf(to) - diatonicOf(from);
   const size = Math.abs(d);
-  const name = INTERVAL_NAMES[size] ?? `${size + 1}ª`;
-  if (d === 0) return 'stessa nota';
+  const base = INTERVAL_NAMES[size];
+  const name = base === undefined ? `${size + 1}ª` : t(base);
+  if (d === 0) return t('stessa nota');
   return `${name} ${d > 0 ? '↑' : '↓'}`;
 }
 
@@ -273,7 +299,7 @@ export function motionLabel(from: string, to: string): 'stessa' | 'grado' | 'sal
 // Sul piano non si contano i tasti dal bordo: si guardano i gruppi di tasti
 // neri (due e tre) e da lì si ricava tutto. Questi aiuti insegnano quello.
 
-const KEY_HINTS: Record<string, string> = {
+export const KEY_HINTS: Record<string, string> = {
   C: 'il tasto bianco subito a SINISTRA del gruppo di DUE tasti neri',
   D: 'il tasto bianco IN MEZZO ai due tasti neri',
   E: 'il tasto bianco subito a DESTRA del gruppo di DUE tasti neri',
@@ -287,11 +313,13 @@ const KEY_HINTS: Record<string, string> = {
 export function keyboardHint(note: string): string {
   const { letter, acc } = parseNote(note);
   const base = KEY_HINTS[letter] ?? '';
-  if (acc === '#') return `il tasto NERO subito a destra di ${italianOf(letter)} — ${base}`;
-  if (acc === 'b') return `il tasto NERO subito a sinistra di ${italianOf(letter)} — ${base}`;
-  if (acc === '##') return `due semitoni a destra di ${italianOf(letter)} — ${base}`;
-  if (acc === 'bb') return `due semitoni a sinistra di ${italianOf(letter)} — ${base}`;
-  return base;
+  const hint = base === '' ? '' : t(base);
+  const name = nameInText(letter);
+  if (acc === '#') return t('il tasto NERO subito a destra di {note} — {hint}', { note: name, hint });
+  if (acc === 'b') return t('il tasto NERO subito a sinistra di {note} — {hint}', { note: name, hint });
+  if (acc === '##') return t('due semitoni a destra di {note} — {hint}', { note: name, hint });
+  if (acc === 'bb') return t('due semitoni a sinistra di {note} — {hint}', { note: name, hint });
+  return hint;
 }
 
 // ── Helper su NoteEntry ─────────────────────────────────────────────────────
@@ -316,7 +344,8 @@ export function noteEntry(note: string, clef: Clef, i = 0, duration?: string): N
     id: `${note}-${i}`,
     clef,
     pitch: note,
-    displayName: italianOf(note),
+    // Letto al momento dell'uso: segue la lingua (in francese "Ré").
+    get displayName() { return italianOf(note); },
     englishName: note,
     vexflowKey: vexKeyOf(note),
     accidental: accidentalKind(acc),

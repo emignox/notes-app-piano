@@ -28,6 +28,7 @@ import type { AudioApi } from '../../hooks/useAudio';
 import type { ProgressApi } from '../../hooks/useProgress';
 import type { ChordMatch, LiveNote } from '../../hooks/usePitchDetection';
 import { haptics } from '../../lib/haptics';
+import { t } from '../../i18n';
 import { Cascade } from './Cascade';
 import type { FallingNote } from './Cascade';
 import { LeggioKeyboard } from './LeggioKeyboard';
@@ -335,10 +336,10 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
 
   // Rotazione dell'iPad o del telefono: si ridisegna per il nuovo spazio.
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | undefined;
-    const onResize = () => { clearTimeout(t); t = setTimeout(fit, 250); };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => { clearTimeout(timer); timer = setTimeout(fit, 250); };
     window.addEventListener('resize', onResize);
-    return () => { clearTimeout(t); window.removeEventListener('resize', onResize); };
+    return () => { clearTimeout(timer); window.removeEventListener('resize', onResize); };
   }, [fit]);
 
   const changeView = (v: View) => {
@@ -514,7 +515,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       // Fine della zona: si ricomincia da capo, e si dice com'è andato il giro.
       const pct = p.total ? Math.round(((p.total - p.errors) / p.total) * 100) : 0;
       if (pct >= 90) audio.playSuccess();
-      setLapNote(`Giro ${lap} · ${pct}% giuste`);
+      setLapNote(t('Giro {lap} · {pct}% giuste', { lap, pct }));
       timers.current.push(setTimeout(() => setLapNote(null), 2600));
       setLap(l => l + 1);
       practice.current = { errors: 0, total: 0, stepError: false, startedAt: performance.now() };
@@ -858,7 +859,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     <div className="fixed inset-0 z-[80] flex flex-col bg-canvas text-ink safe-top">
       {/* Testata */}
       <div className="flex items-center gap-2 border-b border-line/70 px-3 py-2" style={{ background: `linear-gradient(90deg, ${style.from}33, transparent)` }}>
-        <button type="button" onClick={() => { stopAll(); onClose(); }} className="rounded-xl bg-surface2 p-2 text-ink2 active:scale-95" aria-label="Chiudi il leggio">
+        <button type="button" onClick={() => { stopAll(); onClose(); }} className="rounded-xl bg-surface2 p-2 text-ink2 active:scale-95" aria-label={t('Chiudi il leggio')}>
           <X className="h-5 w-5" />
         </button>
         {PORTRAIT[entry.composer] && (
@@ -870,11 +871,11 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
           />
         )}
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-sm font-bold tracking-tight sm:text-base">{entry.title}</p>
+          <p className="truncate text-sm font-bold tracking-tight sm:text-base">{t(entry.title)}</p>
           <p className="truncate text-[11px] text-ink3 sm:text-xs">
-            <span className="hidden sm:inline">{entry.composer} · {LEVEL_LABEL[entry.level]} · </span>
-            <span className="sm:hidden">{style.short} · </span>
-            batt. {measureNow}/{measureCount ? num(measureCount - 1) : '–'}
+            <span className="hidden sm:inline">{t(entry.composer)} · {t(LEVEL_LABEL[entry.level])} · </span>
+            <span className="sm:hidden">{t(composerStyle(entry.composer).short)} · </span>
+            {t('batt. {now}/{total}', { now: measureNow, total: measureCount ? num(measureCount - 1) : '–' })}
           </p>
         </div>
         {onToggleMic && (
@@ -882,7 +883,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             type="button"
             onClick={onToggleMic}
             aria-pressed={mic.isListening}
-            aria-label={mic.isListening ? 'Spegni il microfono' : 'Accendi il microfono: suona sul piano vero'}
+            aria-label={mic.isListening ? t('Spegni il microfono') : t('Accendi il microfono: suona sul piano vero')}
             className={`relative rounded-xl border p-2 active:scale-95 ${mic.isListening ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-400' : 'border-line bg-surface2 text-ink3'}`}
           >
             {mic.isListening ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
@@ -892,10 +893,10 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         {mic.isListening && (
           // Cosa sente il microfono: il volume e la nota. Se resta tutto
           // fermo mentre suoni, il telefono non sta ascoltando.
-          <div className="flex w-12 flex-none flex-col items-center gap-0.5" title="Quello che sente il microfono">
+          <div className="flex w-12 flex-none flex-col items-center gap-0.5" title={t('Quello che sente il microfono')}>
             <div className="flex h-3 items-end gap-0.5">
-              {[0.08, 0.2, 0.4, 0.65, 0.9].map((t, i) => (
-                <span key={i} className={`w-1 rounded-sm ${mic.level >= t ? 'bg-emerald-400' : 'bg-white/15'}`} style={{ height: `${4 + i * 2}px` }} />
+              {[0.08, 0.2, 0.4, 0.65, 0.9].map((lv, i) => (
+                <span key={i} className={`w-1 rounded-sm ${mic.level >= lv ? 'bg-emerald-400' : 'bg-white/15'}`} style={{ height: `${4 + i * 2}px` }} />
               ))}
             </div>
             <span className="text-[10px] font-semibold leading-none text-ink3">{mic.liveNote ? midiName(liveMidi(mic.liveNote)) : '…'}</span>
@@ -907,11 +908,11 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
               key={v}
               type="button"
               onClick={() => changeView(v)}
-              aria-label={VIEW_LABEL[v]}
+              aria-label={t(VIEW_LABEL[v])}
               className={`flex items-center gap-1 px-2.5 py-1.5 ${view === v ? 'bg-brand text-white' : 'bg-surface2 text-ink2'}`}
             >
               {v === 'spartito' ? <FileMusic className="h-4 w-4" /> : v === 'cascata' ? <ChevronsDown className="h-4 w-4" /> : <Rows2 className="h-4 w-4" />}
-              <span className="hidden sm:inline">{VIEW_LABEL[v]}</span>
+              <span className="hidden sm:inline">{t(VIEW_LABEL[v])}</span>
             </button>
           ))}
         </div>
@@ -934,7 +935,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
                   style={{ left: bandBox.left, width: bandBox.width }}
                 >
                   <span className="absolute left-1.5 top-1 rounded-full bg-brand px-2 py-0.5 text-[10px] font-black text-white shadow sm:text-xs">
-                    {picking ? `Da batt. ${num(band.from)}…` : band.from === band.to ? `Ripeti batt. ${num(band.from)}` : `Ripeti ${num(band.from)}–${num(band.to)}`}
+                    {picking ? t('Da batt. {n}…', { n: num(band.from) }) : band.from === band.to ? t('Ripeti batt. {n}', { n: num(band.from) }) : t('Ripeti {from}–{to}', { from: num(band.from), to: num(band.to) })}
                   </span>
                 </div>
               )}
@@ -946,7 +947,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
                     className="absolute left-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-black text-white shadow sm:left-2 sm:px-2 sm:text-xs"
                     style={{ top: st.top + st.height / 2 - 10, background: HAND_COLOR[i] }}
                   >
-                    {i === 0 ? 'm.d.' : 'm.s.'}
+                    {i === 0 ? t('m.d.') : t('m.s.')}
                   </span>
                 ))}
               </div>
@@ -961,7 +962,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             className="pointer-events-none absolute right-2 z-10 max-w-[70%] truncate text-right text-[9px] text-slate-500/80 sm:text-[10px]"
             style={showScore && showCascade ? { top: 'calc(58% - 16px)' } : { top: '4px' }}
           >
-            {entry.credit}
+            {t(entry.credit)}
           </p>
         )}
         {showScore && !loading && (
@@ -988,17 +989,17 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         )}
         {loading && (
           <div className="absolute inset-0 grid place-items-center bg-canvas/80 text-sm font-bold text-ink2">
-            Preparo lo spartito…
+            {t('Preparo lo spartito…')}
           </div>
         )}
         {failed && (
           <div className="absolute inset-0 grid place-items-center text-sm font-bold text-red-400">
-            Non riesco a caricare la partitura.
+            {t('Non riesco a caricare la partitura.')}
           </div>
         )}
         {(picking || lapNote) && (
           <div className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-full bg-brand px-4 py-1.5 text-sm font-black text-white shadow-lg sm:text-base">
-            {picking ? (picking.from === null ? 'Tocca la prima battuta da ripetere' : 'Ora tocca l’ultima battuta') : lapNote}
+            {picking ? (picking.from === null ? t('Tocca la prima battuta da ripetere') : t('Ora tocca l’ultima battuta')) : lapNote}
           </div>
         )}
         {need.length > 0 && (
@@ -1006,7 +1007,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-slate-900/90 px-4 py-1.5 text-sm font-black text-white shadow-lg ring-1 ring-white/10 sm:text-base"
             style={{ top: showCascade && showScore ? 'calc(58% + 8px)' : showScore ? undefined : '8px', bottom: showCascade ? undefined : '8px' }}
           >
-            {mode === 'idle' ? '🎤 Suona per cominciare: ' : 'Suona: '}
+            {(mode === 'idle' ? t('🎤 Suona per cominciare:') : t('Suona:')) + ' '}
             {[...need].sort((a, b) => a - b).map(m => (waitingAt === idx ? stepNames.get(m) : undefined) ?? midiName(m)).join(' + ')}
           </div>
         )}
@@ -1014,21 +1015,21 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
           <div className="absolute inset-0 grid place-items-center bg-canvas/85 p-4">
             <div className="w-full max-w-sm rounded-3xl border border-line bg-surface p-5 text-center shadow-2xl">
               <div className="text-5xl">{result.pct >= 95 ? '🏆' : result.pct >= 80 ? '🎹' : '💪'}</div>
-              <p className="mt-2 text-2xl font-black">{result.pct}% giuste</p>
-              <p className="mt-1 text-sm text-ink2">{result.notes} passaggi in {result.secs}s · tempo {Math.round(rate * 100)}%</p>
+              <p className="mt-2 text-2xl font-black">{t('{pct}% giuste', { pct: result.pct })}</p>
+              <p className="mt-1 text-sm text-ink2">{t('{notes} passaggi in {secs}s · tempo {rate}%', { notes: result.notes, secs: result.secs, rate: Math.round(rate * 100) })}</p>
               <p className="mt-2 text-xs text-ink3">
-                {result.pct >= 95 ? 'Pulito. Alza il tempo del 10% e rifallo.' : 'Rifallo allo stesso tempo: la precisione viene prima della velocità.'}
+                {result.pct >= 95 ? t('Pulito. Alza il tempo del 10% e rifallo.') : t('Rifallo allo stesso tempo: la precisione viene prima della velocità.')}
               </p>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void startPractice()} className="flex items-center justify-center gap-1.5 rounded-xl bg-surface2 py-3 text-sm font-bold">
-                  <RotateCcw className="h-4 w-4" /> Ancora
+                  <RotateCcw className="h-4 w-4" /> {t('Ancora')}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setRate(r => Math.min(1.2, Math.round((r + 0.1) * 100) / 100)); timers.current.push(setTimeout(() => void startPractice(), 50)); }}
                   className="flex items-center justify-center gap-1.5 rounded-xl bg-brand py-3 text-sm font-bold text-white"
                 >
-                  <Plus className="h-4 w-4" /> Più veloce
+                  <Plus className="h-4 w-4" /> {t('Più veloce')}
                 </button>
               </div>
             </div>
@@ -1046,7 +1047,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             className={`flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-black active:scale-95 ${mode === 'listen' ? 'bg-amber-500 text-white' : 'bg-surface2 text-ink'}`}
           >
             {mode === 'listen' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {mode === 'listen' ? 'Pausa' : 'Ascolta'}
+            {mode === 'listen' ? t('Pausa{ctx}', { ctx: '' }) : t('Ascolta')}
           </button>
           <button
             type="button"
@@ -1055,7 +1056,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             className={`flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-black active:scale-95 ${mode === 'practice' ? 'bg-emerald-600 text-white' : 'bg-brand text-white'}`}
           >
             <Target className="h-4 w-4" />
-            {mode === 'practice' ? 'Stop' : 'Esercita'}
+            {mode === 'practice' ? t('Stop') : t('Esercita')}
           </button>
           {/* Le mani con gli stessi colori e le stesse sigle del rigo. */}
           <div className="ml-auto flex overflow-hidden rounded-xl border border-line text-xs font-black sm:ml-0">
@@ -1063,23 +1064,23 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
               <button
                 key={h}
                 type="button"
-                aria-label={h === 'both' ? 'Due mani' : h === 'right' ? 'Mano destra' : 'Mano sinistra'}
+                aria-label={h === 'both' ? t('Due mani') : h === 'right' ? t('Mano destra') : t('Mano sinistra')}
                 onClick={() => { stopAll(); setMode('idle'); setHand(h); }}
                 className={`flex items-center gap-1 px-2.5 py-2.5 ${hand === h ? 'text-white' : 'bg-surface2 text-ink2'}`}
                 style={hand === h ? { background: h === 'both' ? 'var(--color-brand)' : HAND_COLOR[h === 'right' ? 0 : 1] } : undefined}
               >
-                {h === 'both' ? <><HandIcon className="h-3.5 w-3.5" /><HandIcon className="-ml-1.5 h-3.5 w-3.5 -scale-x-100" /></> : h === 'right' ? 'm.d.' : 'm.s.'}
+                {h === 'both' ? <><HandIcon className="h-3.5 w-3.5" /><HandIcon className="-ml-1.5 h-3.5 w-3.5 -scale-x-100" /></> : h === 'right' ? t('m.d.') : t('m.s.')}
               </button>
             ))}
           </div>
         </div>
         <div className="thin-scroll flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
           <div className="flex flex-none items-center gap-0.5 rounded-xl border border-line bg-surface2 px-0.5 text-xs font-bold">
-            <button type="button" onClick={() => setRate(r => Math.max(0.25, Math.round((r - 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label="Più lento">
+            <button type="button" onClick={() => setRate(r => Math.max(0.25, Math.round((r - 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label={t('Più lento')}>
               <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="w-10 text-center tabular-nums" title="Velocità">{Math.round(rate * 100)}%</span>
-            <button type="button" onClick={() => setRate(r => Math.min(1.25, Math.round((r + 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label="Più veloce">
+            <span className="w-10 text-center tabular-nums" title={t('Velocità')}>{Math.round(rate * 100)}%</span>
+            <button type="button" onClick={() => setRate(r => Math.min(1.25, Math.round((r + 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label={t('Più veloce')}>
               <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -1098,20 +1099,20 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             aria-pressed={!!picking}
             className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-bold ${picking ? 'border-brand bg-brand text-white' : 'border-line text-ink2'}`}
           >
-            <Repeat className="h-3.5 w-3.5" /> {picking ? 'Annulla' : 'Ripeti zona'}
+            <Repeat className="h-3.5 w-3.5" /> {picking ? t('Annulla') : t('Ripeti zona')}
           </button>
           {zone && !picking && (
             <button
               type="button"
               onClick={() => { stopAll(); setMode('idle'); setZone(null); setLapNote(null); }}
               className="flex shrink-0 items-center gap-1 rounded-full border border-brand bg-brand/15 px-3 py-1 text-xs font-bold tabular-nums text-brand"
-              aria-label="Togli la zona"
+              aria-label={t('Togli la zona')}
             >
-              {zone.from === zone.to ? `Batt. ${num(zone.from)}` : `Batt. ${num(zone.from)}–${num(zone.to)}`} <X className="h-3.5 w-3.5" />
+              {zone.from === zone.to ? t('Batt. {n}', { n: num(zone.from) }) : t('Batt. {from}–{to}', { from: num(zone.from), to: num(zone.to) })} <X className="h-3.5 w-3.5" />
             </button>
           )}
           <button type="button" onClick={() => { stopAll(); setMode('idle'); setZone(null); setPicking(null); setIdx(0); }} className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${!zone ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink2'}`}>
-            Tutto
+            {t('Tutto')}
           </button>
           {loops.map(l => {
             const active = zone?.from === l.from && zone?.to === l.to;
@@ -1128,7 +1129,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
           })}
           {onGuided && (
             <button type="button" onClick={() => { stopAll(); onGuided(); }} className="flex shrink-0 items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-bold text-ink2">
-              Studio guidato <ChevronRight className="h-3.5 w-3.5" />
+              {t('Studio guidato')} <ChevronRight className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -1137,13 +1138,13 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       {/* Tastiera */}
       <div ref={keysBox} className="h-[19vh] max-h-56 min-h-28 flex-none bg-slate-950 safe-bottom sm:h-[22vh]">
         <div className="flex h-full items-stretch gap-1">
-          <button type="button" onClick={() => setWin(([a, b]) => windowFor(a - 12, b - 12, whiteKeysFor(keysBox.current?.clientWidth ?? 390)))} className="w-6 flex-none text-slate-500" aria-label="Tastiera più in basso">
+          <button type="button" onClick={() => setWin(([a, b]) => windowFor(a - 12, b - 12, whiteKeysFor(keysBox.current?.clientWidth ?? 390)))} className="w-6 flex-none text-slate-500" aria-label={t('Tastiera più in basso')}>
             <ChevronLeft className="mx-auto h-4 w-4" />
           </button>
           <div className="min-w-0 flex-1">
             <LeggioKeyboard from={win[0]} to={win[1]} lit={litKeys} names={stepNames} onPress={pressKey} />
           </div>
-          <button type="button" onClick={() => setWin(([a, b]) => windowFor(a + 12, b + 12, whiteKeysFor(keysBox.current?.clientWidth ?? 390)))} className="w-6 flex-none text-slate-500" aria-label="Tastiera più in alto">
+          <button type="button" onClick={() => setWin(([a, b]) => windowFor(a + 12, b + 12, whiteKeysFor(keysBox.current?.clientWidth ?? 390)))} className="w-6 flex-none text-slate-500" aria-label={t('Tastiera più in alto')}>
             <ChevronRight className="mx-auto h-4 w-4" />
           </button>
         </div>

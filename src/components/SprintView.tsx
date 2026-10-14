@@ -11,6 +11,7 @@ import { Play, Timer, Trophy } from 'lucide-react';
 import { pickOne } from '../lib/session';
 import { samePitchClass, sameSpelling } from '../lib/notes';
 import { haptics } from '../lib/haptics';
+import { t } from '../i18n';
 import type { NoteEntry } from '../types';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
@@ -151,17 +152,17 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
   if (phase === 'setup') {
     return (
       <div className="flex flex-col gap-5">
-        <PageHeader eyebrow="Lettura veloce" title="Sprint" subtitle="Quante note leggi prima che scada il tempo? Non contare le linee: guarda e rispondi." />
+        <PageHeader eyebrow={t('Lettura veloce')} title={t('Sprint')} subtitle={t('Quante note leggi prima che scada il tempo? Non contare le linee: guarda e rispondi.')} />
 
         <ImageCover src={IMG.sprint?.src} position={IMG.sprint?.position} tint="#3b1d0f" className="flex min-h-48 flex-col justify-end rounded-[24px] p-5">
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            <Trophy className="h-3.5 w-3.5" /> Il tuo record
+            <Trophy className="h-3.5 w-3.5" /> {t('Il tuo record')}
           </p>
           <p className="mt-1 text-5xl font-bold tabular-nums tracking-tight text-white">{best}</p>
-          <p className="mt-1 text-sm text-white/75">note giuste · {unlockedNotes.length} note in gioco</p>
+          <p className="mt-1 text-sm text-white/75">{t('note giuste · {n} note in gioco', { n: unlockedNotes.length })}</p>
         </ImageCover>
 
-        <Section label="Durata">
+        <Section label={t('Durata')}>
         <Card className="flex flex-col gap-4">
           <div className="flex gap-2">
             {DURATIONS.map(d => (
@@ -182,14 +183,13 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
 
           <Btn full onClick={start} disabled={unlockedNotes.length === 0}>
             <Play className="h-4 w-4" />
-            Via!
+            {t('Via!')}
           </Btn>
         </Card>
         </Section>
 
         <p className="px-1 text-[13px] leading-relaxed text-ink3">
-          Prima dello sprint fai una sessione normale: lo sprint consolida ciò che sai già, non serve a
-          imparare note nuove.
+          {t('Prima dello sprint fai una sessione normale: lo sprint consolida ciò che sai già, non serve a imparare note nuove.')}
         </p>
       </div>
     );
@@ -202,14 +202,14 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
         {isRecord && <Confetti />}
         <Card className="flex flex-col items-center gap-4 text-center">
           <div className="text-5xl">{isRecord ? '🏆' : score >= best * 0.8 ? '🔥' : '💪'}</div>
-          <h2 className="text-2xl font-black text-ink">{isRecord ? 'Nuovo record!' : 'Tempo scaduto'}</h2>
+          <h2 className="text-2xl font-black text-ink">{isRecord ? t('Nuovo record!') : t('Tempo scaduto')}</h2>
           <p className="text-5xl font-black text-brand tabular-nums">{score}</p>
           <p className="text-sm text-ink2">
-            note in {duration}s · {pct}% di precisione · record {Math.max(best, score)}
+            {t('note in {d}s · {pct}% di precisione · record {best}', { d: duration, pct, best: Math.max(best, score) })}
           </p>
           <div className="flex flex-wrap justify-center gap-2.5">
-            <Btn variant="soft" onClick={() => setPhase('setup')}>Cambia durata</Btn>
-            <Btn onClick={start}>Ancora</Btn>
+            <Btn variant="soft" onClick={() => setPhase('setup')}>{t('Cambia durata')}</Btn>
+            <Btn onClick={start}>{t('Ancora')}</Btn>
           </div>
         </Card>
       </>
@@ -246,7 +246,7 @@ export function SprintView({ progress, audio, mic, notify }: SprintViewProps) {
 
       {flash === 'bad' && note && (
         <p className="text-center text-sm font-bold text-red-400">
-          Era {note.displayName} ({note.englishName})
+          {t('Era {name} ({eng})', { name: note.displayName, eng: note.englishName })}
         </p>
       )}
 

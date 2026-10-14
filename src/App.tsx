@@ -8,6 +8,7 @@ import type { SongSection } from './components/MelodyView';
 import type { ToastData } from './components/ui';
 import { Toasts } from './components/ui';
 import { GlossarioProvider } from './components/RichText';
+import { t, useLang } from './i18n';
 
 // Le viste arrivano solo quando vengono aperte. Anche Pratica, pur essendo la
 // schermata iniziale, resta separata: così la cornice dell'app può comparire
@@ -37,7 +38,7 @@ const SettingsView = lazy(() =>
 function ViewFallback() {
   return (
     <div className="rounded-2xl border border-line bg-surface px-4 py-8 text-center text-sm text-ink3">
-      Caricamento…
+      {t('Caricamento…')}
     </div>
   );
 }
@@ -72,7 +73,7 @@ export default function App() {
   }, []);
 
   const dismissToast = useCallback((id: number) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   }, []);
 
   // L'audio parte al primo tocco: i browser lo richiedono, e chiedere all'utente
@@ -111,11 +112,11 @@ export default function App() {
     const ok = await audio.test();
     if (ok && progress.settings.volume < 0.35) {
       // Il cursore del volume dell'app è facile da abbassare e poi dimenticare.
-      notify('🔉', 'Volume dell\'app basso', `È al ${Math.round(progress.settings.volume * 100)}%: alzalo in Opzioni → Suono.`);
+      notify('🔉', t('Volume dell\'app basso'), t('È al {pct}%: alzalo in Opzioni → Suono.', { pct: Math.round(progress.settings.volume * 100) }));
     } else if (ok) {
-      notify('🔊', 'Senti un Do?', 'Se no: interruttore silenzioso e volume del telefono.');
+      notify('🔊', t('Senti un Do?'), t('Se no: interruttore silenzioso e volume del telefono.'));
     } else {
-      notify('🔇', 'Audio ancora bloccato', 'Tocca lo schermo e riprova.');
+      notify('🔇', t('Audio ancora bloccato'), t('Tocca lo schermo e riprova.'));
     }
   }, [audio, notify, progress.settings.volume]);
 
@@ -143,9 +144,13 @@ export default function App() {
     [pitch.isListening, pitch.liveNote, pitch.level, pitch.confirmedNote, pitch.suppress, pitch.release, pitch.external, pitch.expect, pitch.chordMatch],
   );
 
+  // Cambiando lingua il contenuto si ridisegna da capo (i testi sono letti al
+  // disegno); lo stato dell'app — scheda, microfono, progressi — resta.
+  const lang = useLang();
+
   return (
     <GlossarioProvider audio={audio}>
-    <div className="min-h-screen bg-canvas text-ink">
+    <div key={lang} className="min-h-screen bg-canvas text-ink">
       <TopBar
         level={progress.level}
         dayStreak={progress.data.dayStreak}
@@ -163,12 +168,12 @@ export default function App() {
       <main className="mx-auto max-w-2xl space-y-4 px-4 pb-28 pt-4">
         {pitch.permissionDenied && (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">
-            Microfono negato: controlla i permessi del browser per usare il piano vero come risposta.
+            {t('Microfono negato: controlla i permessi del browser per usare il piano vero come risposta.')}
           </div>
         )}
         {audio.status === 'fallback' && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-400">
-            Campioni di pianoforte non disponibili (sei offline?): sto usando un suono sintetico.
+            {t('Campioni di pianoforte non disponibili (sei offline?): sto usando un suono sintetico.')}
           </div>
         )}
 
@@ -217,7 +222,7 @@ export default function App() {
         </Suspense>
       </main>
 
-      <BottomNav tab={tab} onChange={t => navigate(t)} />
+      <BottomNav tab={tab} onChange={next => navigate(next)} />
       <Toasts items={toasts} onDone={dismissToast} />
     </div>
     </GlossarioProvider>

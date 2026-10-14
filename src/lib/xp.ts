@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { FAST_MS, SLOW_MS } from './srs';
+import { t } from '../i18n';
 
 export interface XpGain {
   total: number;
@@ -12,14 +13,14 @@ export interface XpGain {
 }
 
 export function xpForAnswer(correct: boolean, ms: number, streak: number, usedHint: boolean): XpGain {
-  if (!correct) return { total: 1, reasons: ['tentativo'] };
+  if (!correct) return { total: 1, reasons: [t('tentativo')] };
 
   const reasons: string[] = [];
   let total = 10;
 
   if (!usedHint && ms <= FAST_MS) {
     total += 6;
-    reasons.push('fulmine ⚡');
+    reasons.push(t('fulmine ⚡'));
   } else if (ms > SLOW_MS) {
     total -= 3;
   }
@@ -27,7 +28,7 @@ export function xpForAnswer(correct: boolean, ms: number, streak: number, usedHi
 
   if (streak > 0 && streak % 5 === 0) {
     total += 10;
-    reasons.push(`serie ×${streak} 🔥`);
+    reasons.push(t('serie ×{n} 🔥', { n: streak }));
   }
 
   return { total: Math.max(1, total), reasons };
@@ -57,11 +58,11 @@ export function levelInfo(xp: number): LevelInfo {
 
 /** Titolo del livello: dà un senso di identità che il numero da solo non dà. */
 export function levelTitle(level: number): string {
-  if (level >= 25) return 'Maestro';
-  if (level >= 18) return 'Concertista';
-  if (level >= 13) return 'Solista';
-  if (level >= 9) return 'Musicista';
-  if (level >= 6) return 'Allievo esperto';
-  if (level >= 3) return 'Allievo';
-  return 'Principiante';
+  if (level >= 25) return t('Maestro');
+  if (level >= 18) return t('Concertista');
+  if (level >= 13) return t('Solista');
+  if (level >= 9) return t('Musicista');
+  if (level >= 6) return t('Allievo esperto');
+  if (level >= 3) return t('Allievo');
+  return t('Principiante');
 }

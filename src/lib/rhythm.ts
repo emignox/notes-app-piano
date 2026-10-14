@@ -6,6 +6,8 @@
 // I valori sono in "movimenti" (battiti da semiminima), che è come si contano.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { t } from '../i18n';
+
 export type ValueId = 'semibreve' | 'minima' | 'semiminima' | 'croma' | 'semicroma';
 
 export interface NoteValue {
@@ -85,7 +87,7 @@ export const VALUES: NoteValue[] = [
 export const valueById = (id: ValueId): NoteValue => VALUES.find(v => v.id === id) ?? VALUES[2];
 
 /** Il punto aggiunge METÀ del valore: una minima puntata vale 2 + 1 = 3. */
-const FRACTION: Record<number, string> = {
+export const FRACTION: Record<number, string> = {
   0.125: 'un ottavo', 0.25: 'un quarto', 0.375: 'tre ottavi', 0.5: 'mezzo',
   0.625: 'cinque ottavi', 0.75: 'tre quarti', 0.875: 'sette ottavi',
 };
@@ -98,9 +100,9 @@ const FRACTION: Record<number, string> = {
 export function beatsLabel(n: number): string {
   const whole = Math.floor(n);
   const part = FRACTION[n - whole];
-  if (whole === 0) return part === 'mezzo' ? 'mezzo movimento' : `${part ?? n} di movimento`;
-  const head = `${whole} ${whole === 1 ? 'movimento' : 'movimenti'}`;
-  return part ? `${head} e ${part}` : head;
+  if (whole === 0) return part === 'mezzo' ? t('mezzo movimento') : t('{part} di movimento', { part: part ? t(part) : n });
+  const head = whole === 1 ? t('1 movimento') : t('{n} movimenti', { n: whole });
+  return part ? t('{head} e {part}', { head, part: t(part) }) : head;
 }
 
 export function dotted(beats: number, dots = 1): number {
@@ -173,8 +175,8 @@ export const METERS: Meter[] = [
  */
 export function meterExplain(meter: Meter): string {
   const [top, bottom] = meter.id.split('/');
-  const unit = bottom === '4' ? 'una semiminima' : bottom === '8' ? 'una croma' : 'una minima';
-  return `Il ${top} sopra dice quante ne stanno in una battuta; il ${bottom} sotto dice che l'unità è ${unit}.`;
+  const unit = bottom === '4' ? t('una semiminima') : bottom === '8' ? t('una croma') : t('una minima');
+  return t('Il {top} sopra dice quante ne stanno in una battuta; il {bottom} sotto dice che l\'unità è {unit}.', { top, bottom, unit });
 }
 
 /** Somma di una serie di figure, per verificare che una battuta torni. */

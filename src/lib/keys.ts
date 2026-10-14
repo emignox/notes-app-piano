@@ -6,8 +6,9 @@
 // 12 minori senza scrivere a mano 24 tabelle che poi divergono.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { buildChord, buildScale } from './harmony';
+import { buildChord, buildScale, nameIn } from './harmony';
 import type { ChordQuality } from './harmony';
+import { t } from '../i18n';
 import { italianOf, parseNote } from './notes';
 
 /** Il circolo, dal Do e in senso orario (quinte in su). */
@@ -56,17 +57,17 @@ export function keyInfo(tonic: string, mode: 'maggiore' | 'minore' = 'maggiore')
     accidentals: n,
     signature,
     relative: mode === 'maggiore' ? RELATIVE_MINOR[major] ?? 'A' : major,
-    label: `${italianOf(tonic)} ${mode}`,
+    label: `${nameIn(italianOf(tonic))} ${t(mode)}`,
   };
 }
 
 /** Come si legge l'armatura a voce: "2 diesis (Fa♯, Do♯)". */
 export function signatureText(info: KeyInfo): string {
-  if (info.accidentals === 0) return 'nessuna alterazione';
-  const names = info.signature.map(s => italianOf(s)).join(', ');
+  if (info.accidentals === 0) return t('nessuna alterazione');
+  const names = info.signature.map(s => nameIn(italianOf(s))).join(', ');
   const n = Math.abs(info.accidentals);
-  const word = info.accidentals > 0 ? 'diesis' : n === 1 ? 'bemolle' : 'bemolli';
-  return `${n} ${word} (${names})`;
+  if (info.accidentals > 0) return n === 1 ? t('1 diesis ({names})', { names }) : t('{n} diesis ({names})', { n, names });
+  return n === 1 ? t('1 bemolle ({names})', { names }) : t('{n} bemolli ({names})', { n, names });
 }
 
 // ── Accordi di una tonalità ─────────────────────────────────────────────────
@@ -117,7 +118,7 @@ export interface DegreeChord {
   role: string;
 }
 
-const ROLES_MAJOR = [
+export const ROLES_MAJOR = [
   'tonica: la casa, il punto di riposo',
   'sottodominante: prepara la dominante (è il "due" del II-V-I)',
   'mediante: colore fra tonica e dominante, poco usato da solo',
@@ -127,7 +128,7 @@ const ROLES_MAJOR = [
   'sensibile: instabile, quasi sempre di passaggio',
 ];
 
-const ROLES_MINOR = [
+export const ROLES_MINOR = [
   'tonica: la casa, qui in minore',
   'sottodominante instabile: ha la quinta diminuita, apre il II-V-I minore',
   'relativa maggiore: le stesse note della tonica, ma in luce',
@@ -156,7 +157,7 @@ export function diatonicChords(
       root: `${letter}${acc}`,
       quality,
       notes: buildChord(root, quality),
-      role: mode === 'maggiore' ? ROLES_MAJOR[i] : ROLES_MINOR[i],
+      role: t(mode === 'maggiore' ? ROLES_MAJOR[i] : ROLES_MINOR[i]),
     };
   });
 }

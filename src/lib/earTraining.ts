@@ -11,7 +11,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ChordQuality, ScaleType } from './harmony';
-import { buildChord, buildScale } from './harmony';
+import { buildChord, buildScale, nameIn } from './harmony';
+import { t } from '../i18n';
 import { italianOf, midiOf, noteFromMidi } from './notes';
 import type { RhythmPattern } from './rhythmReading';
 import { generatePattern, lengthInBeats } from './rhythmReading';
@@ -121,7 +122,7 @@ export const INTERVAL_LABEL: Record<number, string> = {
 };
 
 /** Canzoni che cominciano con l'intervallo (salendo): il modo più veloce di riconoscerlo. */
-const INTERVAL_SONG: Record<number, string> = {
+export const INTERVAL_SONG: Record<number, string> = {
   1: '"Lo squalo": due note che si avvicinano minacciose.',
   2: '"Fra Martino": Fra-Mar…',
   3: '"Greensleeves": l\'attacco malinconico.',
@@ -143,7 +144,7 @@ const SEVENTH_SETS: ChordQuality[][] = [
 ];
 const SCALE_SETS: ScaleType[][] = [['maggiore', 'minore naturale'], ['maggiore', 'minore naturale', 'minore armonica'], ['maggiore', 'minore naturale', 'minore armonica', 'minore melodica']];
 
-const CHORD_TIP: Partial<Record<ChordQuality, string>> = {
+export const CHORD_TIP: Partial<Record<ChordQuality, string>> = {
   maggiore: 'Maggiore: aperto, luminoso, "a casa".',
   minore: 'Minore: in ombra. È solo la terza, più bassa di un semitono.',
   diminuito: 'Diminuito: stretto, teso, vuole muoversi.',
@@ -154,6 +155,32 @@ const CHORD_TIP: Partial<Record<ChordQuality, string>> = {
   semidiminuito: 'm7♭5: instabile ma elegante, prepara il dominante in minore.',
   'settima diminuita': 'dim7: drammatico, simmetrico: nei pezzi romantici arriva nei momenti di massima tensione.',
 };
+
+export const SCALE_TIP: Record<ScaleType, string> = {
+  maggiore: 'Maggiore: la terza è alta, tutto sorride.',
+  'minore naturale': 'Minore naturale: terza, sesta e settima basse; arriva in cima senza spinta.',
+  'minore armonica': 'Armonica: la settima alzata crea un salto di un tono e mezzo, dal sapore "orientale".',
+  'minore melodica': 'Melodica (salendo): comincia minore e finisce come una maggiore.',
+};
+
+/** Come si chiamano gli intervalli nelle domande delle lezioni (con i semitoni). */
+export const INTERVAL_NAMES: Record<number, string> = {
+  1: 'seconda minore (1 semitono)',
+  2: 'seconda maggiore (2)',
+  3: 'terza minore (3)',
+  4: 'terza maggiore (4)',
+  5: 'quarta giusta (5)',
+  6: 'tritono (6)',
+  7: 'quinta giusta (7)',
+  8: 'sesta minore (8)',
+  9: 'sesta maggiore (9)',
+  10: 'settima minore (10)',
+  11: 'settima maggiore (11)',
+  12: 'ottava (12)',
+};
+
+/** Nomi degli intervalli contati sul pentagramma (lettere, non semitoni). */
+export const GENERIC_INTERVALS = ['unisono', 'seconda', 'terza', 'quarta', 'quinta', 'sesta', 'settima', 'ottava'];
 
 /** Una tonica comoda da ascoltare: fra Sol3 e Fa4. */
 const roots = (): string => noteFromMidi(55 + Math.floor(Math.random() * 11));
@@ -169,10 +196,14 @@ function intervalQuestion(level: number): EarQuestion {
     return mode === 'insieme' ? { kind: 'together', notes: [a, b] } : { kind: 'melodic', notes: [a, b], secs: 0.75 };
   };
   return {
-    prompt: mode === 'insieme' ? 'Due note insieme: che intervallo è?' : `Due note, ${mode === 'su' ? 'la seconda più acuta' : 'la seconda più grave'}: che intervallo è?`,
+    prompt: mode === 'insieme'
+      ? t('Due note insieme: che intervallo è?')
+      : mode === 'su'
+        ? t('Due note, la seconda più acuta: che intervallo è?')
+        : t('Due note, la seconda più grave: che intervallo è?'),
     sound: make(semis),
-    choices: shuffle(set.map(s => ({ label: INTERVAL_LABEL[s], correct: s === semis, sound: make(s) }))),
-    tip: INTERVAL_SONG[semis] ? `Per ricordarla: ${INTERVAL_SONG[semis]}` : undefined,
+    choices: shuffle(set.map(s => ({ label: t(INTERVAL_LABEL[s]), correct: s === semis, sound: make(s) }))),
+    tip: INTERVAL_SONG[semis] ? t('Per ricordarla: {song}', { song: t(INTERVAL_SONG[semis]) }) : undefined,
   };
 }
 
@@ -189,8 +220,8 @@ function chordQuestion(sets: ChordQuality[][], level: number, title: string): Ea
   return {
     prompt: title,
     sound: voice(quality),
-    choices: shuffle(set.map(q => ({ label: q, correct: q === quality, sound: voice(q) }))),
-    tip: CHORD_TIP[quality],
+    choices: shuffle(set.map(q => ({ label: t(q), correct: q === quality, sound: voice(q) }))),
+    tip: CHORD_TIP[quality] ? t(CHORD_TIP[quality]) : undefined,
   };
 }
 
@@ -199,18 +230,12 @@ function scaleQuestion(level: number): EarQuestion {
   const type = pick(set);
   const root = noteFromMidi(57 + Math.floor(Math.random() * 6));
   // buildScale chiude già con la tonica in cima: aggiungerla di nuovo la faceva suonare due volte.
-  const sound = (t: ScaleType): Sound => ({ kind: 'melodic', notes: buildScale(root, t), secs: 0.32 });
-  const tips: Record<ScaleType, string> = {
-    maggiore: 'Maggiore: la terza è alta, tutto sorride.',
-    'minore naturale': 'Minore naturale: terza, sesta e settima basse; arriva in cima senza spinta.',
-    'minore armonica': 'Armonica: la settima alzata crea un salto di un tono e mezzo, dal sapore "orientale".',
-    'minore melodica': 'Melodica (salendo): comincia minore e finisce come una maggiore.',
-  };
+  const sound = (kind: ScaleType): Sound => ({ kind: 'melodic', notes: buildScale(root, kind), secs: 0.32 });
   return {
-    prompt: 'Che scala è?',
+    prompt: t('Che scala è?'),
     sound: sound(type),
-    choices: shuffle(set.map(t => ({ label: t, correct: t === type, sound: sound(t) }))),
-    tip: tips[type],
+    choices: shuffle(set.map(k => ({ label: t(k), correct: k === type, sound: sound(k) }))),
+    tip: t(SCALE_TIP[type]),
   };
 }
 
@@ -236,11 +261,13 @@ function melodyQuestion(level: number): EarQuestion {
   }
   const notes = steps.map(s => scale[s]);
   return {
-    prompt: `Ritrova la frase sulla tastiera. Comincia da ${italianOf(notes[0])}${minor ? ' (la minore)' : ''}.`,
+    prompt: minor
+      ? t('Ritrova la frase sulla tastiera. Comincia da {nota} (la minore).', { nota: nameIn(italianOf(notes[0]), true) })
+      : t('Ritrova la frase sulla tastiera. Comincia da {nota}.', { nota: nameIn(italianOf(notes[0]), true) }),
     sound: { kind: 'melodic', notes, secs: 0.6 },
     choices: [],
     answer: notes,
-    tip: 'Canta la frase a bassa voce prima di cercarla: se la sai cantare, la trovi.',
+    tip: t('Canta la frase a bassa voce prima di cercarla: se la sai cantare, la trovi.'),
   };
 }
 
@@ -257,18 +284,18 @@ function rhythmQuestion(level: number): EarQuestion {
     ...others.map((p): EarChoice => ({ label: '', correct: false, pattern: p, sound: { kind: 'rhythm', pattern: p } })),
   ];
   return {
-    prompt: 'Quale di queste figure hai sentito?',
+    prompt: t('Quale di queste figure hai sentito?'),
     sound: { kind: 'rhythm', pattern: target },
     choices: shuffle(choices).map((c, i) => ({ ...c, label: String.fromCharCode(65 + i) })),
-    tip: 'Conta "1 e 2 e 3 e 4 e" mentre ascolti: ogni nota cade su un numero o su una "e".',
+    tip: t('Conta "1 e 2 e 3 e 4 e" mentre ascolti: ogni nota cade su un numero o su una "e".'),
   };
 }
 
 export function makeQuestion(drill: EarDrillId, level: number): EarQuestion {
   switch (drill) {
     case 'intervalli': return intervalQuestion(level);
-    case 'triadi': return chordQuestion(TRIAD_SETS, level, 'Che accordo è?');
-    case 'settime': return chordQuestion(SEVENTH_SETS, level, 'Che accordo di settima è?');
+    case 'triadi': return chordQuestion(TRIAD_SETS, level, t('Che accordo è?'));
+    case 'settime': return chordQuestion(SEVENTH_SETS, level, t('Che accordo di settima è?'));
     case 'scale': return scaleQuestion(level);
     case 'melodia': return melodyQuestion(level);
     case 'ritmo': return rhythmQuestion(level);

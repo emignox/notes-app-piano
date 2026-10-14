@@ -15,6 +15,7 @@ import type { HandMarks, Piece, PieceStep } from '../types';
 import { keyInfo } from './keys';
 import { parseNote, sortByPitch } from './notes';
 import { splitMeasures } from './score';
+import { t } from '../i18n';
 
 /** Suddivisioni per semiminima: la semicroma vale 1. */
 const DIV = 4;
@@ -106,7 +107,7 @@ function directionXml(st: PieceStep, staff: number, offset: number): string {
   if (st.dyn) parts.push(`<direction placement="below"><direction-type><dynamics><${st.dyn}/></dynamics></direction-type>${off}<staff>${staff}</staff></direction>`);
   if (st.hair === 'cresc' || st.hair === 'dim') parts.push(`<direction placement="below"><direction-type><wedge type="${st.hair === 'cresc' ? 'crescendo' : 'diminuendo'}"/></direction-type>${off}<staff>${staff}</staff></direction>`);
   if (st.hair === 'end') parts.push(`<direction placement="below"><direction-type><wedge type="stop"/></direction-type>${off}<staff>${staff}</staff></direction>`);
-  if (st.text) parts.push(`<direction placement="${/rit|rall|accel|tempo|mosso/i.test(st.text) ? 'above' : 'below'}"><direction-type><words font-style="italic">${escapeXml(st.text)}</words></direction-type>${off}<staff>${staff}</staff></direction>`);
+  if (st.text) parts.push(`<direction placement="${/rit|rall|accel|tempo|mosso/i.test(st.text) ? 'above' : 'below'}"><direction-type><words font-style="italic">${escapeXml(t(st.text))}</words></direction-type>${off}<staff>${staff}</staff></direction>`);
   return parts.join('');
 }
 
@@ -169,7 +170,7 @@ export function pieceToMusicXml(piece: Piece): string {
       body += `<attributes><divisions>${DIV}</divisions><key><fifths>${fifths}</fifths><mode>${piece.key.mode === 'minore' ? 'minor' : 'major'}</mode></key>`
         + `<time><beats>${num}</beats><beat-type>${den}</beat-type></time><staves>2</staves>`
         + `<clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>`;
-      body += `<direction placement="above"><direction-type><words font-weight="bold">${escapeXml(piece.tempoText ?? '')}</words></direction-type><staff>1</staff><sound tempo="${piece.bpm}"/></direction>`;
+      body += `<direction placement="above"><direction-type><words font-weight="bold">${escapeXml(piece.tempoText ? t(piece.tempoText) : '')}</words></direction-type><staff>1</staff><sound tempo="${piece.bpm}"/></direction>`;
     }
 
     (['r', 'l'] as Hand[]).forEach((h, hi) => {

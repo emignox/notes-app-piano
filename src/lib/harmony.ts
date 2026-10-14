@@ -8,7 +8,38 @@
 // prima la LETTERA e poi l'alterazione che la porta all'altezza giusta.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { midiOf, noteFromMidi, parseNote } from './notes';
+import { getLang, t } from '../i18n';
+import { englishOf, italianOf, midiOf, noteFromMidi, parseNote } from './notes';
+
+// ── Il nome delle note nella lingua dell'app ────────────────────────────────
+// In italiano è quello di sempre (Do, Re, Mi…). In inglese sono le lettere
+// (C, D, E…), in francese do, ré, mi… Le sigle degli accordi (C, Dm, G7) sono
+// uguali in tutte le lingue e non passano da qui.
+
+const EN_LETTER: Record<string, string> = { Do: 'C', Re: 'D', Mi: 'E', Fa: 'F', Sol: 'G', La: 'A', Si: 'B' };
+const FR_NAME: Record<string, string> = { Do: 'do', Re: 'ré', Mi: 'mi', Fa: 'fa', Sol: 'sol', La: 'la', Si: 'si' };
+
+/**
+ * Un nome italiano ("Do♯", "Si♭") nella lingua corrente. Con `inline` il
+ * francese resta minuscolo come dentro una frase ("do majeur"); da solo, in un
+ * elenco o in un titolo, comincia con la maiuscola ("Do").
+ */
+export function nameIn(italian: string, inline = false): string {
+  const lang = getLang();
+  if (lang === 'it') return italian;
+  // italianOf() già scrive "Ré" quando la lingua è il francese: si accetta anche quello.
+  const m = /^(Sol|Do|Re|Ré|Mi|Fa|La|Si)(.*)$/.exec(italian);
+  if (!m) return italian;
+  const name = m[1] === 'Ré' ? 'Re' : m[1];
+  if (lang === 'en') return EN_LETTER[name] + m[2];
+  const base = FR_NAME[name];
+  return (inline ? base : base.charAt(0).toUpperCase() + base.slice(1)) + m[2];
+}
+
+/** Come `nameIn`, a partire da una nota ("C#4"). In inglese, le lettere. */
+export function noteName(note: string, inline = false): string {
+  return getLang() === 'en' ? englishOf(note) : nameIn(italianOf(note), inline);
+}
 
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const;
 const NATURAL: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -220,19 +251,26 @@ export interface InversionInfo {
 
 const INVERSION_NAMES = ['fondamentale', 'primo rivolto', 'secondo rivolto', 'terzo rivolto'];
 const INVERSION_EN = ['root position', '1st inversion', '2nd inversion', '3rd inversion'];
-const BASS_DEGREE = ['la fondamentale', 'la terza', 'la quinta', 'la settima'];
+// "fondamentale" è anche una voce del glossario (la nota), che in inglese è
+// "root": per questo i nomi delle posizioni non passano dal dizionario.
+const INVERSION_NAMES_LANG = {
+  en: INVERSION_EN,
+  fr: ['position fondamentale', '1er renversement', '2e renversement', '3e renversement'],
+};
+export const BASS_DEGREE = ['la fondamentale', 'la terza', 'la quinta', 'la settima'];
 
 export function inversionsOf(quality: ChordQuality): InversionInfo[] {
   const size = CHORDS[quality].steps.length;
+  const lang = getLang();
   return Array.from({ length: size }, (_, i) => ({
     index: i,
-    name: INVERSION_NAMES[i],
+    name: lang === 'it' ? INVERSION_NAMES[i] : INVERSION_NAMES_LANG[lang][i],
     english: INVERSION_EN[i],
-    bass: BASS_DEGREE[i],
+    bass: t(BASS_DEGREE[i]),
     explain:
       i === 0
-        ? 'La fondamentale sta al basso: la posizione più stabile, quella con cui si impara l\'accordo.'
-        : `Al basso c'è ${BASS_DEGREE[i]}. Stesse note, stesso accordo: cambia solo l'ordine, e con esso il colore e — soprattutto — la comodità per la mano.`,
+        ? t('La fondamentale sta al basso: la posizione più stabile, quella con cui si impara l\'accordo.')
+        : t('Al basso c\'è {bass}. Stesse note, stesso accordo: cambia solo l\'ordine, e con esso il colore e — soprattutto — la comodità per la mano.', { bass: t(BASS_DEGREE[i]) }),
   }));
 }
 

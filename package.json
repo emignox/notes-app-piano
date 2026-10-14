@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check:pezzi": "node scripts/check-pieces.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "bench:mic": "node scripts/bench-mic.mjs",
     "bench:pezzi": "node scripts/bench-pieces.mjs",
     "bench:vero": "node scripts/bench-real.mjs"

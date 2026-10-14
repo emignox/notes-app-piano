@@ -15,8 +15,10 @@ import type { ProgressApi } from '../hooks/useProgress';
 import type { ConfirmedNote } from '../hooks/usePitchDetection';
 import type { EarDrillId, EarQuestion, Sound } from '../lib/earTraining';
 import { EAR_DRILLS, EAR_START, drillById, makeQuestion, soundLength } from '../lib/earTraining';
-import { italianOf, parseNote, samePitchClass } from '../lib/notes';
+import { parseNote, samePitchClass } from '../lib/notes';
+import { noteName } from '../lib/harmony';
 import { haptics } from '../lib/haptics';
+import { t } from '../i18n';
 import { Bar, Btn, Card, Panel, Pill } from './ui';
 import type { Notify } from './ui';
 import { PianoKeyboard } from './PianoKeyboard';
@@ -52,10 +54,10 @@ function useSound(audio: AudioApi, mic: MicApi) {
         const beat = 60 / RHYTHM_BPM;
         const events: TimelineEvent[] = [];
         for (let b = 0; b < 8; b++) events.push({ at: b * beat, kind: b % 4 === 0 ? 'accent' : 'click' });
-        let t = 4;
+        let pos = 4;
         for (const bar of sound.pattern) for (const item of bar) {
-          if (!item.rest) events.push({ at: t * beat, kind: 'note', note: 'G4', dur: Math.max(0.1, item.beats * beat * 0.8) });
-          t += item.beats;
+          if (!item.rest) events.push({ at: pos * beat, kind: 'note', note: 'G4', dur: Math.max(0.1, item.beats * beat * 0.8) });
+          pos += item.beats;
         }
         audio.playTimeline(events);
       }
@@ -87,8 +89,8 @@ function QuestionCard({
 
   // La domanda si sente subito: non si deve cercare il pulsante.
   useEffect(() => {
-    const t = setTimeout(() => play(q.sound), 350);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => play(q.sound), 350);
+    return () => clearTimeout(timer);
   }, [q, play]);
 
   const answer = q.answer;
@@ -130,7 +132,7 @@ function QuestionCard({
       <p className="text-sm font-bold text-ink">{q.prompt}</p>
       <Btn variant="soft" full onClick={() => play(q.sound)}>
         <Volume2 className="h-4 w-4" />
-        {picked !== null || melodyDone ? 'Riascolta' : 'Ascolta di nuovo'}
+        {picked !== null || melodyDone ? t('Riascolta') : t('Ascolta di nuovo')}
       </Btn>
 
       {/* Dettato melodico */}
@@ -148,7 +150,7 @@ function QuestionCard({
                       : 'border-line bg-surface2 text-ink3'
                 }`}
               >
-                {i < found || melodyDone ? italianOf(n) : '?'}
+                {i < found || melodyDone ? noteName(n) : '?'}
               </span>
             ))}
           </div>
@@ -164,11 +166,11 @@ function QuestionCard({
             />
           </Panel>
           {wrongKey && !melodyDone && (
-            <p className="text-center text-xs text-red-400">{italianOf(wrongKey)} no: canticchia la frase e riprova</p>
+            <p className="text-center text-xs text-red-400">{t('{nota} no: canticchia la frase e riprova', { nota: noteName(wrongKey) })}</p>
           )}
           {melodyDone && found < answer.length && (
             <Btn full onClick={() => onDone(false)}>
-              Continua
+              {t('Continua')}
               <ChevronRight className="h-4 w-4" />
             </Btn>
           )}
@@ -218,23 +220,23 @@ function QuestionCard({
       {chosen && !chosen.correct && (
         <>
           <Panel className="space-y-2 px-3 py-2.5">
-            <p className="text-xs font-semibold text-ink">Confrontale: è la differenza che si impara.</p>
+            <p className="text-xs font-semibold text-ink">{t('Confrontale: è la differenza che si impara.')}</p>
             <div className="grid grid-cols-2 gap-2">
               {chosen.sound && (
                 <Btn variant="soft" className="px-2 py-2 text-xs" onClick={() => play(chosen.sound!)}>
-                  <Play className="h-3.5 w-3.5" /> la tua
+                  <Play className="h-3.5 w-3.5" /> {t('la tua')}
                 </Btn>
               )}
               {right?.sound && (
                 <Btn variant="soft" className="px-2 py-2 text-xs" onClick={() => play(right.sound!)}>
-                  <Play className="h-3.5 w-3.5" /> la giusta
+                  <Play className="h-3.5 w-3.5" /> {t('la giusta')}
                 </Btn>
               )}
             </div>
             {q.tip && <p className="text-xs leading-relaxed text-ink2">{q.tip}</p>}
           </Panel>
           <Btn full onClick={() => onDone(false)}>
-            Continua
+            {t('Continua')}
             <ChevronRight className="h-4 w-4" />
           </Btn>
         </>
@@ -263,8 +265,8 @@ function Session({
   const onDone = useCallback(
     (correct: boolean) => {
       const out = progress.recordEar(drill, correct, info.levels.length);
-      if (out.changed > 0) notify('👂', `${info.title}: livello ${out.level}`, info.levels[out.level - 1]);
-      if (out.changed < 0) notify('↩️', `${info.title}: un passo indietro`, 'Si consolida, poi si risale.');
+      if (out.changed > 0) notify('👂', t('{title}: livello {n}', { title: t(info.title), n: out.level }), t(info.levels[out.level - 1]));
+      if (out.changed < 0) notify('↩️', t('{title}: un passo indietro', { title: t(info.title) }), t('Si consolida, poi si risale.'));
       if (correct) setRight(r => r + 1);
       setN(x => x + 1);
       setQuestion(makeQuestion(drill, out.level));
@@ -280,8 +282,8 @@ function Session({
           <ChevronLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="font-bold text-ink">{info.emoji} {info.title}</p>
-          <p className="truncate text-xs text-ink3">livello {level} · {info.levels[level - 1]}</p>
+          <p className="font-bold text-ink">{info.emoji} {t(info.title)}</p>
+          <p className="truncate text-xs text-ink3">{t('livello {n} · {desc}', { n: level, desc: t(info.levels[level - 1]) })}</p>
         </div>
         {!done && <span className="text-xs tabular-nums text-ink3">{n + 1}/{SESSION}</span>}
       </div>
@@ -296,14 +298,14 @@ function Session({
           <p className="text-xl font-black text-ink">{right}/{SESSION}</p>
           <p className="max-w-xs text-sm text-ink2">
             {right >= 8
-              ? 'Orecchio sicuro a questo livello. Pochi minuti al giorno valgono più di un\'ora una volta.'
-              : 'Normale: l\'orecchio impara più lentamente delle dita. Torna domani, anche solo per dieci domande.'}
+              ? t('Orecchio sicuro a questo livello. Pochi minuti al giorno valgono più di un\'ora una volta.')
+              : t('Normale: l\'orecchio impara più lentamente delle dita. Torna domani, anche solo per dieci domande.')}
           </p>
           <div className="flex gap-2">
-            <Btn variant="soft" onClick={onBack}>Altri esercizi</Btn>
+            <Btn variant="soft" onClick={onBack}>{t('Altri esercizi')}</Btn>
             <Btn onClick={() => { setN(0); setRight(0); setQuestion(makeQuestion(drill, (progress.data.ear[drill] ?? EAR_START).level)); }}>
               <RotateCcw className="h-4 w-4" />
-              Ancora
+              {t('Ancora')}
             </Btn>
           </div>
         </div>
@@ -324,13 +326,12 @@ export function EarTrainer(props: EarTrainerProps) {
   return (
     <div className="flex flex-col gap-3">
       <Card>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Orecchio</p>
-        <h2 className="mt-1 text-xl font-black text-ink">Sentire prima di suonare</h2>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">{t('Orecchio')}</p>
+        <h2 className="mt-1 text-xl font-black text-ink">{t('Sentire prima di suonare')}</h2>
         <p className="mt-1 text-sm leading-relaxed text-ink2">
-          Chopin si suona cantando: sentire dove va una frase, se un accordo chiede di risolvere, quanto dura una
-          nota. Dieci domande al giorno bastano; il livello si regola da solo.
+          {t('Chopin si suona cantando: sentire dove va una frase, se un accordo chiede di risolvere, quanto dura una nota. Dieci domande al giorno bastano; il livello si regola da solo.')}
         </p>
-        {totals > 0 && <p className="mt-2 text-xs text-ink3">{totals} risposte date finora</p>}
+        {totals > 0 && <p className="mt-2 text-xs text-ink3">{t('{n} risposte date finora', { n: totals })}</p>}
       </Card>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {EAR_DRILLS.map(d => {
@@ -347,12 +348,12 @@ export function EarTrainer(props: EarTrainerProps) {
                 <span className="text-2xl">{d.emoji}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-bold text-ink">{d.title}</span>
-                    <Pill tone="brand">liv. {p.level}/{d.levels.length}</Pill>
+                    <span className="font-bold text-ink">{t(d.title)}</span>
+                    <Pill tone="brand">{t('liv. {n}/{max}', { n: p.level, max: d.levels.length })}</Pill>
                     {acc !== null && <Pill tone={acc >= 80 ? 'good' : 'neutral'}>{acc}%</Pill>}
                   </div>
-                  <p className="mt-0.5 text-xs leading-snug text-ink2">{d.why}</p>
-                  <p className="mt-0.5 text-[11px] text-ink3">ora: {d.levels[p.level - 1]}</p>
+                  <p className="mt-0.5 text-xs leading-snug text-ink2">{t(d.why)}</p>
+                  <p className="mt-0.5 text-[11px] text-ink3">{t('ora: {desc}', { desc: t(d.levels[p.level - 1]) })}</p>
                 </div>
               </div>
             </button>

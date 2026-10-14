@@ -6,6 +6,7 @@
 import type { Card } from './srs';
 import type { NameStyle } from './notes';
 import type { EarProgress } from './earTraining';
+import { getLang } from '../i18n';
 
 const KEY = 'piano-trainer-v2';
 const LEGACY_KEY = 'piano-notes-progress';
@@ -132,6 +133,12 @@ export interface Persisted {
   /** Miglior risultato dei loop: chiave pezzo/sezione/mano → serie perfetta e BPM. */
   pieceLoops: Record<string, { perfectRuns: number; bpm: number }>;
   settings: Settings;
+}
+
+/** La lingua per date e numeri, secondo la lingua dell'app. */
+export function dateLocale(): 'it-IT' | 'en-GB' | 'fr-FR' {
+  const lang = getLang();
+  return lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'it-IT';
 }
 
 export function todayKey(d: Date = new Date()): string {

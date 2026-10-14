@@ -9,6 +9,7 @@ import { KIND_ADVICE, KIND_LABEL } from '../lib/diagnosis';
 import { italianOf } from '../lib/notes';
 import { Bar, Btn, Card, Confetti, Panel, Pill } from './ui';
 import { noteById } from '../data/curriculum';
+import { t } from '../i18n';
 
 export interface SessionLogEntry {
   noteId: string;
@@ -61,7 +62,7 @@ export function SessionSummary({
     .sort((a, b) => b.ms - a.ms)[0];
 
   const emoji = perfect ? '🏆' : pct >= 80 ? '🎹' : pct >= 55 ? '👍' : '💪';
-  const title = perfect ? 'Perfetta!' : pct >= 80 ? 'Ottimo lavoro' : pct >= 55 ? 'Ci siamo' : 'Continua così';
+  const title = perfect ? t('Perfetta!') : pct >= 80 ? t('Ottimo lavoro') : pct >= 55 ? t('Ci siamo') : t('Continua così');
 
   return (
     <>
@@ -71,7 +72,7 @@ export function SessionSummary({
         <div>
           <h2 className="text-2xl font-black text-ink">{title}</h2>
           <p className="mt-1 text-sm text-ink2">
-            {correct}/{total} · {pct}% · {(avgMs / 1000).toFixed(1)}s per nota
+            {t('{correct}/{total} · {pct}% · {s}s per nota', { correct, total, pct, s: (avgMs / 1000).toFixed(1) })}
           </p>
         </div>
 
@@ -98,22 +99,22 @@ export function SessionSummary({
 
         {mistakes.length > 0 && (
           <Panel className="w-full space-y-2 px-4 py-3 text-left">
-            <p className="text-xs font-black uppercase tracking-wide text-ink3">Cosa è andato storto</p>
+            <p className="text-xs font-black uppercase tracking-wide text-ink3">{t('Cosa è andato storto')}</p>
             {mistakes.slice(0, 4).map((l, i) => {
               const note = noteById(l.noteId);
               return (
                 <div key={i} className="text-xs leading-relaxed text-ink2">
                   <span className="font-bold text-ink">
-                    {note?.displayName} {note?.clef === 'bass' ? '(basso)' : ''}
+                    {note?.displayName} {note?.clef === 'bass' ? t('(basso)') : ''}
                   </span>{' '}
-                  → hai risposto <span className="font-bold text-red-400">{italianOf(l.given ?? '')}</span>.{' '}
+                  {t('→ hai risposto')} <span className="font-bold text-red-400">{italianOf(l.given ?? '')}</span>.{' '}
                   {l.mistake?.text}
                 </div>
               );
             })}
             {mainKind && mainKind[1] >= 2 && (
               <p className="border-t border-line/60 pt-2 text-xs font-semibold leading-relaxed text-ink">
-                Errore ricorrente — {KIND_LABEL[mainKind[0]]} ({mainKind[1]}×): {KIND_ADVICE[mainKind[0]]}
+                {t('Errore ricorrente')} — {t(KIND_LABEL[mainKind[0]])} ({mainKind[1]}×): {t(KIND_ADVICE[mainKind[0]])}
               </p>
             )}
           </Panel>
@@ -121,20 +122,19 @@ export function SessionSummary({
 
         {perfect && slowest && slowest.ms > 2500 && (
           <p className="text-xs text-ink3">
-            Tutto giusto. La più lenta è stata {noteById(slowest.noteId)?.displayName} ({(slowest.ms / 1000).toFixed(1)}s): tornerà
-            presto finché non diventa automatica.
+            {t('Tutto giusto. La più lenta è stata {note} ({s}s): tornerà presto finché non diventa automatica.', { note: String(noteById(slowest.noteId)?.displayName), s: (slowest.ms / 1000).toFixed(1) })}
           </p>
         )}
 
         {canUnlockNext && nextNote && (
           <Panel className="w-full border-brand/50 bg-brand/10 px-4 py-3">
-            <p className="text-sm font-bold text-ink">Sei pronto per una nota nuova 🎉</p>
+            <p className="text-sm font-bold text-ink">{t('Sei pronto per una nota nuova 🎉')}</p>
             <p className="mt-0.5 text-xs text-ink2">
-              La prossima è {nextNote.displayName} ({nextNote.englishName})
+              {t('La prossima è {note} ({eng})', { note: nextNote.displayName, eng: nextNote.englishName })}
             </p>
             <Btn full className="mt-2.5" onClick={onUnlock}>
               <Unlock className="h-4 w-4" />
-              Sblocca {nextNote.displayName}
+              {t('Sblocca {note}', { note: nextNote.displayName })}
               <ChevronRight className="h-4 w-4" />
             </Btn>
           </Panel>
@@ -144,18 +144,18 @@ export function SessionSummary({
           {mistakes.length > 0 && (
             <Btn variant={canUnlockNext ? 'soft' : 'primary'} onClick={onDrill}>
               <Target className="h-4 w-4" />
-              Allena gli errori
+              {t('Allena gli errori')}
             </Btn>
           )}
           <Btn variant={canUnlockNext || mistakes.length > 0 ? 'soft' : 'primary'} onClick={onRetry}>
             <RotateCcw className="h-4 w-4" />
-            Altra sessione
+            {t('Altra sessione')}
           </Btn>
         </div>
 
         {!canUnlockNext && (
           <p className="text-xs text-ink3">
-            La prossima nota si sblocca quando questa ti viene naturale: 3 risposte giuste, due di fila, senza esitare.
+            {t('La prossima nota si sblocca quando questa ti viene naturale: 3 risposte giuste, due di fila, senza esitare.')}
           </p>
         )}
       </Card>

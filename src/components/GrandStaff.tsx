@@ -47,6 +47,7 @@ import {
   vexDuration,
 } from '../lib/score';
 import type { SingleHand } from '../lib/score';
+import { t } from '../i18n';
 
 interface GrandStaffProps {
   piece: Piece;
@@ -898,7 +899,7 @@ export function GrandStaff({
         ctx.setFont('Georgia', 11, 'normal', 'italic');
         ctx.setFillStyle(MARK);
         ctx.fillText(
-          step.text,
+          t(step.text),
           // Accanto alla dinamica, se in questo punto ce n'è una.
           agogic ? g.x - 4 : g.x + (step.dyn ? 20 : -4),
           agogic ? trebleTop(g.sys) - g.sys.textRow : gapY(i),
@@ -960,7 +961,7 @@ export function GrandStaff({
       ctx.save();
       ctx.setFont('Arial', 10, 'bold');
       ctx.setFillStyle('#b45309');
-      ctx.fillText(sec.name, opensRow ? MARGIN + 2 : g.x - 6, trebleTop(g.sys) - g.sys.sectionRow);
+      ctx.fillText(t(sec.name), opensRow ? MARGIN + 2 : g.x - 6, trebleTop(g.sys) - g.sys.sectionRow);
       ctx.restore();
     });
 
@@ -969,7 +970,7 @@ export function GrandStaff({
       ctx.save();
       ctx.setFont('Georgia', 13, 'bold', 'italic');
       ctx.setFillStyle(INK);
-      ctx.fillText(piece.tempoText, MARGIN + 2, HEAD_H - 6);
+      ctx.fillText(t(piece.tempoText), MARGIN + 2, HEAD_H - 6);
       ctx.restore();
     }
 
@@ -1085,7 +1086,7 @@ export function GrandStaff({
       </div>
       {zoom < 0.72 && width < 500 && (
         <p className="mt-1.5 px-1 text-center text-[11px] text-ink3">
-          Spartito fitto: gira il telefono in orizzontale per vederlo più grande.
+          {t('Spartito fitto: gira il telefono in orizzontale per vederlo più grande.')}
         </p>
       )}
     </div>

@@ -5,20 +5,21 @@
 
 import { useEffect, useRef } from 'react';
 import { Beam, Dot, Formatter, Renderer, Stave, StaveNote, Voice } from 'vexflow';
+import { DURATION_NAMES as NAMES } from '../lib/rhythmReading';
 import type { HitGrade, RhythmPattern } from '../lib/rhythmReading';
+import { t } from '../i18n';
 
 const INK = '#101828';
 const COLORS: Record<HitGrade, string> = { ok: '#15803d', quasi: '#ca8a04', fuori: '#dc2626', persa: '#dc2626' };
 const ACTIVE = '#4f46e5';
 
-const NAMES: Record<string, string> = {
-  w: 'semibreve', hd: 'minima puntata', h: 'minima', qd: 'semiminima puntata', q: 'semiminima', '8': 'croma', '16': 'semicroma',
-};
-
 /** La figura a parole, per chi usa un lettore di schermo. */
 function describe(pattern: RhythmPattern): string {
   return pattern
-    .map((bar, i) => `Battuta ${i + 1}: ${bar.map(it => (it.rest ? `pausa di ${NAMES[it.dur]}` : NAMES[it.dur])).join(', ')}`)
+    .map((bar, i) => t('Battuta {n}: {figure}', {
+      n: i + 1,
+      figure: bar.map(it => (it.rest ? t('pausa di {nome}', { nome: t(NAMES[it.dur]) }) : t(NAMES[it.dur]))).join(', '),
+    }))
     .join('. ');
 }
 

@@ -18,6 +18,7 @@ import type { AudioApi } from '../hooks/useAudio';
 import type { ChordMatch, ConfirmedNote, LiveNote } from '../hooks/usePitchDetection';
 import { PageHeader, Section, Segmented } from './ui';
 import { Leggio } from './leggio/Leggio';
+import { t } from '../i18n';
 
 export type SongSection = 'melodie' | 'pezzi';
 
@@ -42,6 +43,10 @@ interface MelodyViewProps {
   onToggleMic?: () => void;
 }
 
+/** La difficoltà com'è scritta. Le chiavi hanno un {ctx} vuoto: "medio" in un'altra area è il dito. */
+const difficultyLabel = (d: Melody['difficulty']) =>
+  d === 'facile' ? t('facile{ctx}', { ctx: '' }) : d === 'medio' ? t('medio{ctx}', { ctx: '' }) : t('difficile{ctx}', { ctx: '' });
+
 function stars(pct: number): string {
   if (pct >= 100) return '★★★';
   if (pct >= 80) return '★★☆';
@@ -62,7 +67,7 @@ function MelodyCard({
   best: number;
   onSelect: (m: Melody, force: boolean) => void;
 }) {
-  const missing = melody.requiredToneNotes.filter(t => !learned.includes(t));
+  const missing = melody.requiredToneNotes.filter(tn => !learned.includes(tn));
   const open = missing.length === 0;
 
   return (
@@ -75,13 +80,13 @@ function MelodyCard({
         {melody.emoji}
       </span>
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-[15px] font-semibold tracking-tight ${open ? 'text-ink' : 'text-ink2'}`}>{melody.title}</span>
+        <span className={`block truncate text-[15px] font-semibold tracking-tight ${open ? 'text-ink' : 'text-ink2'}`}>{t(melody.title)}</span>
         <span className="mt-0.5 block truncate text-[13px] text-ink3">
-          {melody.composer} · {melody.notes.length} note · {melody.difficulty}
+          {t(melody.composer)} · {t('{n} note', { n: melody.notes.length })} · {difficultyLabel(melody.difficulty)}
         </span>
         {!open && (
           <span className="mt-0.5 block truncate text-[11px] text-ink3">
-            ti servono: {missing.slice(0, 6).map(t => `${italianOf(t)}${parseNote(t).octave}`).join(' ')}
+            {t('ti servono:')} {missing.slice(0, 6).map(tn => `${italianOf(tn)}${parseNote(tn).octave}`).join(' ')}
             {missing.length > 6 ? ` +${missing.length - 6}` : ''}
           </span>
         )}
@@ -109,7 +114,7 @@ export function MelodyView({ progress, audio, mic, section, onSection, initialMe
   const best = (m: Melody) =>
     Math.max(progress.data.melodyBest[m.id] ?? 0, progress.data.melodyBest[`leggio:melodia-${m.id}`] ?? 0);
 
-  const open = melodies.filter(m => m.requiredToneNotes.every(t => learned.includes(t)));
+  const open = melodies.filter(m => m.requiredToneNotes.every(tn => learned.includes(tn)));
 
   const locked = melodies.filter(m => !open.includes(m));
   const row = (m: Melody) => (
@@ -124,22 +129,22 @@ export function MelodyView({ progress, audio, mic, section, onSection, initialMe
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Repertorio" title="Canzoni" subtitle="Melodie a una mano: leggi le note una dopo l'altra, al tuo tempo." />
+      <PageHeader eyebrow={t('Repertorio')} title={t('Canzoni')} subtitle={t('Melodie a una mano: leggi le note una dopo l\'altra, al tuo tempo.')} />
       <Segmented
         value={section}
         onChange={onSection}
         options={[
-          { value: 'pezzi', label: 'Brani' },
-          { value: 'melodie', label: 'Melodie' },
+          { value: 'pezzi', label: t('Brani') },
+          { value: 'melodie', label: t('Melodie') },
         ]}
       />
       {open.length > 0 && (
-        <Section label="Le puoi già leggere" action={<span className="text-xs tabular-nums text-ink3">{open.length}</span>}>
+        <Section label={t('Le puoi già leggere')} action={<span className="text-xs tabular-nums text-ink3">{open.length}</span>}>
           <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface">{open.map(row)}</div>
         </Section>
       )}
       {locked.length > 0 && (
-        <Section label="Con le prossime note" action={<span className="text-xs tabular-nums text-ink3">{locked.length}</span>}>
+        <Section label={t('Con le prossime note')} action={<span className="text-xs tabular-nums text-ink3">{locked.length}</span>}>
           <div className="divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface">{locked.map(row)}</div>
         </Section>
       )}

@@ -6,10 +6,11 @@ import { useState } from 'react';
 import { Volume2 } from 'lucide-react';
 import type { Block } from '../data/lessons';
 import type { AudioApi } from '../hooks/useAudio';
-import { CHORDS, buildChord, chordSymbol, invert } from '../lib/harmony';
+import { CHORDS, buildChord, chordSymbol, invert, noteName } from '../lib/harmony';
 import { CIRCLE_FLAT, CIRCLE_SHARP, PROGRESSIONS, diatonicChords, keyInfo, realize } from '../lib/keys';
 import { METERS, meterExplain, valueById } from '../lib/rhythm';
 import { accidentalKind, italianOf, midiOf, parseNote, vexKeyOf } from '../lib/notes';
+import { getLang, t } from '../i18n';
 import type { NoteEntry } from '../types';
 import { Panel } from './ui';
 import { Staff } from './Staff';
@@ -64,7 +65,7 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
     case 'key':
       return (
         <div className="rounded-xl border-l-4 border-brand bg-brand/10 px-4 py-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-brand">da ricordare</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-brand">{t('da ricordare')}</p>
           <p className="mt-1 text-sm font-semibold leading-relaxed text-ink"><RichText text={block.text} /></p>
         </div>
       );
@@ -79,7 +80,7 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
               audio.playSequence(block.notes.map(n => ({ toneNote: n, durationSec: 0.42 })));
             }}
             className="relative block w-full active:scale-[0.99]"
-            aria-label={`Ascolta ${block.caption ?? 'l\'esempio'}`}
+            aria-label={block.caption ? t('Ascolta {nome}', { nome: block.caption }) : t('Ascolta l\'esempio')}
           >
           <Staff
             entries={block.notes.map((n, i) => toEntry(n, i, clefForAll(block.notes), block.durations?.[i]))}
@@ -95,7 +96,7 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
           <NoteKeyboard
             notes={block.notes}
             onPress={n => { audio.playNote(n); suppressMic(1500); }}
-            caption={block.notes.map(n => italianOf(n)).join(' · ')}
+            caption={block.notes.map(n => noteName(n)).join(' · ')}
           />
         </figure>
       );
@@ -111,7 +112,7 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
             type="button"
             onClick={() => { suppressMic(2500); audio.playChord(notes, 1.8); }}
             className="relative block w-full active:scale-[0.99]"
-            aria-label={`Ascolta ${block.caption ?? chordSymbol(block.root, block.quality)}`}
+            aria-label={t('Ascolta {nome}', { nome: block.caption ?? chordSymbol(block.root, block.quality) })}
           >
             <ChordStaff notes={notes} />
             <span className="absolute right-2 top-2 rounded-lg border border-slate-300/70 bg-white/80 p-1.5 text-slate-600 shadow-sm">
@@ -119,12 +120,12 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
             </span>
           </button>
           <figcaption className="text-center text-xs text-ink3">
-            {block.caption ?? `${chordSymbol(block.root, block.quality)} — ${notes.map(n => italianOf(n)).join(' ')}`}
+            {block.caption ?? `${chordSymbol(block.root, block.quality)} — ${notes.map(n => noteName(n)).join(' ')}`}
           </figcaption>
           <NoteKeyboard
             notes={notes}
             onPress={n => { audio.playNote(n); suppressMic(1500); }}
-            caption={`i tasti da premere: ${notes.map(n => italianOf(n)).join(' · ')}`}
+            caption={t('i tasti da premere: {note}', { note: notes.map(n => noteName(n)).join(' · ') })}
           />
         </figure>
       );
@@ -221,11 +222,12 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-ink">
-                    {v.name} <span className="font-normal text-ink3">({v.english})</span>
+                    {t(v.name)}{' '}
+                    {getLang() === 'it' && <span className="font-normal text-ink3">({v.english})</span>}
                   </p>
-                  <p className="text-xs leading-snug text-ink2">{v.drawing}</p>
-                  <p className="mt-0.5 text-xs text-ink3">Pausa: {v.restDrawing}</p>
-                  <p className="mt-0.5 text-xs text-ink3">Si conta: {v.counting}</p>
+                  <p className="text-xs leading-snug text-ink2">{t(v.drawing)}</p>
+                  <p className="mt-0.5 text-xs text-ink3">{t('Pausa: {desc}', { desc: t(v.restDrawing) })}</p>
+                  <p className="mt-0.5 text-xs text-ink3">{t('Si conta: {desc}', { desc: t(v.counting) })}</p>
                 </div>
               </div>
             );
@@ -244,10 +246,10 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
             <span className="text-lg font-black text-ink">{m.id.split('/')[1]}</span>
           </span>
           <div className="min-w-0 flex-1 space-y-0.5">
-            <p className="text-sm font-bold text-ink">{m.feel}</p>
+            <p className="text-sm font-bold text-ink">{t(m.feel)}</p>
             <p className="text-xs text-ink2">{meterExplain(m)}</p>
-            <p className="text-xs text-ink3">Accenti: {m.accents}</p>
-            <p className="text-xs text-ink3">{m.where}</p>
+            <p className="text-xs text-ink3">{t('Accenti: {desc}', { desc: t(m.accents) })}</p>
+            <p className="text-xs text-ink3">{t(m.where)}</p>
           </div>
         </div>
       );
@@ -257,13 +259,13 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
       return (
         <div className="space-y-2">
           <div className="rounded-xl border border-line bg-surface p-3">
-            <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink3">↻ diesis (quinte in su)</p>
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink3">{t('↻ diesis (quinte in su)')}</p>
             <div className="flex flex-wrap gap-1.5">
-              {CIRCLE_SHARP.map(t => {
-                const info = keyInfo(t);
+              {CIRCLE_SHARP.map(tonic => {
+                const info = keyInfo(tonic);
                 return (
-                  <span key={t} className="rounded-lg bg-surface2 px-2 py-1 text-xs">
-                    <span className="font-bold text-ink">{italianOf(t)}</span>
+                  <span key={tonic} className="rounded-lg bg-surface2 px-2 py-1 text-xs">
+                    <span className="font-bold text-ink">{noteName(tonic)}</span>
                     <span className="text-ink3"> · {info.accidentals}♯</span>
                   </span>
                 );
@@ -271,13 +273,13 @@ export function BlockView({ block, audio, suppressMic }: { block: Block; audio: 
             </div>
           </div>
           <div className="rounded-xl border border-line bg-surface p-3">
-            <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink3">↺ bemolli (quarte in su)</p>
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink3">{t('↺ bemolli (quarte in su)')}</p>
             <div className="flex flex-wrap gap-1.5">
-              {CIRCLE_FLAT.map(t => {
-                const info = keyInfo(t);
+              {CIRCLE_FLAT.map(tonic => {
+                const info = keyInfo(tonic);
                 return (
-                  <span key={t} className="rounded-lg bg-surface2 px-2 py-1 text-xs">
-                    <span className="font-bold text-ink">{italianOf(t)}</span>
+                  <span key={tonic} className="rounded-lg bg-surface2 px-2 py-1 text-xs">
+                    <span className="font-bold text-ink">{noteName(tonic)}</span>
                     <span className="text-ink3"> · {Math.abs(info.accidentals)}♭</span>
                   </span>
                 );
@@ -332,7 +334,7 @@ function DegreesBlock({
       <NoteKeyboard
         notes={chords[shown].notes}
         onPress={n => { audio.playNote(n); suppressMic(1500); }}
-        caption={`${chords[shown].roman} · ${chords[shown].notes.map(n => italianOf(n)).join(' · ')}`}
+        caption={`${chords[shown].roman} · ${chords[shown].notes.map(n => noteName(n)).join(' · ')}`}
       />
     </div>
   );
@@ -355,7 +357,7 @@ function ProgressionBlock({
         <div className="space-y-2 rounded-xl border border-line bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-sm font-bold text-ink">{prog.name}</p>
+              <p className="text-sm font-bold text-ink">{t(prog.name)}</p>
               <p className="text-xs font-semibold text-brand">{prog.roman}</p>
             </div>
             <button
@@ -367,7 +369,7 @@ function ProgressionBlock({
               className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white active:scale-95"
             >
               <Volume2 className="h-3.5 w-3.5" />
-              Ascolta
+              {t('Ascolta')}
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -387,10 +389,10 @@ function ProgressionBlock({
           <NoteKeyboard
             notes={chords[shown].notes}
             onPress={n => { audio.playNote(n); suppressMic(1500); }}
-            caption={`${chords[shown].roman} · ${chords[shown].notes.map(n => italianOf(n)).join(' · ')}`}
+            caption={`${chords[shown].roman} · ${chords[shown].notes.map(n => noteName(n)).join(' · ')}`}
           />
-          <p className="text-xs leading-relaxed text-ink2">{prog.why}</p>
-          <p className="text-xs text-ink3">{prog.where}</p>
+          <p className="text-xs leading-relaxed text-ink2">{t(prog.why)}</p>
+          <p className="text-xs text-ink3">{t(prog.where)}</p>
         </div>
   );
 }
@@ -405,7 +407,7 @@ export function ChordRef({ root, quality }: { root: string; quality: import('../
         <span className="text-base font-black text-ink">{chordSymbol(`${root}4`, quality)}</span>
         <span className="text-xs text-ink3">{spec.formula}</span>
       </div>
-      <p className="mt-0.5 text-xs text-ink2">{notes.map(n => italianOf(n)).join(' · ')}</p>
+      <p className="mt-0.5 text-xs text-ink2">{notes.map(n => noteName(n)).join(' · ')}</p>
     </div>
   );
 }

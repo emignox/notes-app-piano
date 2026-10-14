@@ -15,11 +15,18 @@
 // Escadon), concorde con quella di R. Kelley sui casi difficili.
 // Le voci scritte a mano hanno un testo loro; le altre lo ricavano dai dati
 // (alterazioni, pollici, gradi), così non possono contraddirli.
+//
+// Lingue: i dati qui sotto restano in italiano (sono letti una volta sola, ad
+// avvio). I testi generati NON stanno nei dati: li costruiscono, al momento di
+// mostrarli, scaleTitle/scaleNote, arpeggioTitle/arpeggioNote, chordTitle e
+// chordUsage, nella lingua corrente. Le voci scritte a mano si traducono col
+// loro testo italiano come chiave (vedi i18n/sources/studio.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ScaleType, ChordQuality } from '../lib/harmony';
-import { buildChord, buildScale } from '../lib/harmony';
+import { buildChord, buildScale, nameIn } from '../lib/harmony';
 import { italianOf, midiOf, parseNote } from '../lib/notes';
+import { t } from '../i18n';
 
 export interface ScaleExercise {
   id: string;
@@ -38,8 +45,8 @@ export interface ScaleExercise {
    */
   rhDown?: number[];
   lhDown?: number[];
-  /** Nota didattica specifica di questa tonalità. */
-  note: string;
+  /** Nota didattica specifica di questa tonalità (solo le voci scritte a mano: le altre la generano `scaleNote`). */
+  note?: string;
 }
 
 // Le maggiori "bianche" e Fa condividono la stessa mano destra tranne Fa, che
@@ -185,7 +192,8 @@ export interface ArpeggioExercise {
   /** Diteggiatura in salita su una ottava (4 note: 1-3-5-8). */
   rh: number[];
   lh: number[];
-  note: string;
+  /** Solo le voci scritte a mano: le altre la generano `arpeggioNote`. */
+  note?: string;
 }
 
 const ARP_RH = [1, 2, 3, 5];
@@ -265,8 +273,8 @@ export interface ChordExercise {
   quality: ChordQuality;
   title: string;
   level: 'base' | 'intermedio' | 'avanzato';
-  /** Dove lo incontri: aggancia la teoria a qualcosa di reale. */
-  usage: string;
+  /** Dove lo incontri: aggancia la teoria a qualcosa di reale (solo le voci scritte a mano: le altre la generano `chordUsage`). */
+  usage?: string;
   /** Uno dei dieci accordi "da studiare per primi", scritti a mano. */
   starter?: boolean;
 }
@@ -308,10 +316,21 @@ const pcOf = (note: string) => ((midiOf(note) % 12) + 12) % 12;
 const MAJOR_ROOTS = ['C4', 'G4', 'D4', 'A4', 'E4', 'B3', 'F#4', 'Db4', 'Ab3', 'Eb4', 'Bb3', 'F4'];
 const MINOR_ROOTS = ['A4', 'E4', 'B3', 'F#4', 'C#4', 'G#3', 'Eb4', 'Bb3', 'F4', 'C4', 'G4', 'D4'];
 
+/**
+ * Il nome italiano di una nota per i DATI (id, titoli): sempre "Re", mai "Ré",
+ * qualunque sia la lingua in cui il modulo viene caricato. I testi che
+ * l'utente legge passano da nameIn(), che segue la lingua.
+ */
+const IT_NAME: Record<string, string> = { C: 'Do', D: 'Re', E: 'Mi', F: 'Fa', G: 'Sol', A: 'La', B: 'Si' };
+const itName = (note: string): string => {
+  const { letter, acc } = parseNote(note);
+  return IT_NAME[letter] + (acc === '#' ? '♯' : acc === 'b' ? '♭' : acc === '##' ? '♯♯' : acc === 'bb' ? '♭♭' : '');
+};
+
 /** "Do♯" → "dod", "Si♭" → "sib": come negli id scritti a mano. */
 function slug(note: string): string {
-  const { acc } = parseNote(note);
-  const base = italianOf(`${parseNote(note).letter}`).toLowerCase();
+  const { acc, letter } = parseNote(note);
+  const base = IT_NAME[letter].toLowerCase();
   return base + (acc === '#' ? 'd' : acc === 'b' ? 'b' : '');
 }
 
@@ -343,40 +362,58 @@ const MINOR_TYPES: ScaleType[] = ['minore naturale', 'minore armonica', 'minore 
 function signature(notes: string[]): string {
   const sharps = notes.slice(0, 7).filter(n => parseNote(n).acc === '#').length;
   const flats = notes.slice(0, 7).filter(n => parseNote(n).acc === 'b').length;
-  if (sharps) return `${sharps} diesis`;
-  if (flats) return `${flats} ${flats === 1 ? 'bemolle' : 'bemolli'}`;
-  return 'nessuna alterazione';
+  if (sharps) return sharps === 1 ? t('1 diesis') : t('{n} diesis', { n: sharps });
+  if (flats) return flats === 1 ? t('1 bemolle') : t('{n} bemolli', { n: flats });
+  return t('nessuna alterazione');
 }
 
-/**
- * "pollici su Mi e La" dalla diteggiatura: dove cade il dito 1. Nelle scale
+/** "pollici su Mi e La" dalla diteggiatura: dove cade il dito 1. Nelle scale
  * l'ultima nota (l'ottava) non conta: lì la mano si ferma; negli arpeggi sì,
  * è il passaggio all'ottava sopra.
  */
 function thumbs(notes: string[], fingers: number[], last: boolean): string {
-  const at = notes.filter((_, i) => fingers[i] === 1 && (last || i < notes.length - 1)).map(n => italianOf(n));
+  const at = notes.filter((_, i) => fingers[i] === 1 && (last || i < notes.length - 1)).map(n => nameIn(italianOf(n), true));
   const unique = [...new Set(at)];
-  if (unique.length === 0) return 'senza pollice';
-  return unique.length === 1 ? `pollice su ${unique[0]}` : `pollici su ${unique.join(' e ')}`;
+  if (unique.length === 0) return t('senza pollice');
+  return unique.length === 1 ? t('pollice su {nota}', { nota: unique[0] }) : t('pollici su {note}', { note: unique.join(` ${t('e')} `) });
 }
 
-function handLine(label: string, notes: string[], fingers: number[], last = false): string {
-  const start = fingers[0] === 1 || fingers[0] === 5 ? '' : `si parte col ${fingers[0]}, `;
-  return `${label}: ${start}${thumbs(notes, fingers, last)} (${fingers.join('-')}).`;
+function handLine(right: boolean, notes: string[], fingers: number[], last = false): string {
+  const vars = { label: right ? t('Destra') : t('Sinistra'), thumbs: thumbs(notes, fingers, last), fingers: fingers.join('-'), dito: fingers[0] };
+  return fingers[0] === 1 || fingers[0] === 5
+    ? t('{label}: {thumbs} ({fingers}).', vars)
+    : t('{label}: si parte col {dito}, {thumbs} ({fingers}).', vars);
+}
+
+/** La minore generata: il testo ricavato dalla tonalità e dalle diteggiature. */
+function minorScaleNote(ex: ScaleExercise): string {
+  const up = buildScale(ex.root, ex.type);
+  const nat = buildScale(ex.root, 'minore naturale');
+  const rel = nameIn(italianOf(nat[2]), true);
+  const altered = nat.slice(0, 7).some(n => parseNote(n).acc === '#' || parseNote(n).acc === 'b');
+  const head = altered
+    ? t('{sig} in chiave: relativa minore di {rel} maggiore.', { sig: signature(nat), rel })
+    : t('nessuna alterazione in chiave: relativa minore di {rel} maggiore.', { rel });
+  const parts = [head];
+  if (ex.type === 'minore armonica') {
+    parts.push(t('Armonica: la settima alzata, {nota}.', { nota: nameIn(italianOf(up[6]), true) }));
+  } else if (ex.type === 'minore melodica') {
+    parts.push(t('Melodica: in salita sesta e settima alzate ({sesta}, {settima}), in discesa si torna alla naturale.', {
+      sesta: nameIn(italianOf(up[5]), true),
+      settima: nameIn(italianOf(up[6]), true),
+    }));
+  }
+  parts.push(handLine(true, up, ex.rh), handLine(false, up, ex.lh));
+  return parts.join(' ');
 }
 
 function minorScale(root: string, type: ScaleType): ScaleExercise {
   const [natural, harmonic, melodic] = MINOR_FINGERING[root];
   const h = type === 'minore naturale' ? natural : type === 'minore armonica' ? harmonic : melodic;
-  const up = buildScale(root, type);
   const nat = buildScale(root, 'minore naturale');
-  const name = italianOf(root);
+  const name = itName(root);
   const kind = type.replace('minore ', '');
   const accidentals = nat.filter(n => parseNote(n).acc !== '').length;
-  const altered =
-    type === 'minore armonica' ? ` Armonica: la settima alzata, ${italianOf(up[6])}.`
-    : type === 'minore melodica' ? ` Melodica: in salita sesta e settima alzate (${italianOf(up[5])}, ${italianOf(up[6])}), in discesa si torna alla naturale.`
-    : '';
   const level: Level = type === 'minore melodica' ? (accidentals <= 1 ? 'intermedio' : 'avanzato') : accidentals <= 2 ? 'intermedio' : 'avanzato';
   return {
     id: `scala-${slug(root)}-minore${type === 'minore naturale' ? '' : `-${kind}`}`,
@@ -387,7 +424,6 @@ function minorScale(root: string, type: ScaleType): ScaleExercise {
     rh: h.rh,
     lh: h.lh,
     ...(type === 'minore melodica' ? { rhDown: natural.rh, lhDown: natural.lh } : {}),
-    note: `${signature(nat)} in chiave: relativa minore di ${italianOf(nat[2])} maggiore.${altered} ${handLine('Destra', up, h.rh)} ${handLine('Sinistra', up, h.lh)}`,
   };
 }
 
@@ -423,25 +459,31 @@ const ARP_FINGERING: Record<'maggiore' | 'minore', Record<string, Hands>> = {
   },
 };
 
+/** Il testo generato di un arpeggio: le note, un consiglio e le due mani. */
+function generatedArpeggioNote(ex: ArpeggioExercise): string {
+  const chord = buildChord(ex.root, ex.quality);
+  const notes = [...chord, chord[0]];
+  const black = chord.filter(n => parseNote(n).acc !== '').length;
+  const parts = [`${notes.map(n => nameIn(italianOf(n))).join('-')}.`];
+  if (black === 3) parts.push(t('Tutti tasti neri: qui il pollice va sul nero, non c\'è alternativa.'));
+  else if (parseNote(ex.root).acc !== '') parts.push(t('Si parte da un tasto nero con un dito lungo: il pollice tiene il tasto bianco.'));
+  parts.push(handLine(true, notes, ex.rh, true), handLine(false, notes, ex.lh, true));
+  return parts.join(' ');
+}
+
 function arpeggio(root: string, quality: 'maggiore' | 'minore'): ArpeggioExercise {
   const h = ARP_FINGERING[quality][root];
   const chord = buildChord(root, quality);
-  const notes = [...chord, chord[0]];
   const black = chord.filter(n => parseNote(n).acc !== '').length;
   const level: Level = black === 0 ? 'base' : parseNote(root).acc === '' ? 'intermedio' : 'avanzato';
-  const hint =
-    black === 3 ? ' Tutti tasti neri: qui il pollice va sul nero, non c\'è alternativa.'
-    : parseNote(root).acc !== '' ? ' Si parte da un tasto nero con un dito lungo: il pollice tiene il tasto bianco.'
-    : '';
   return {
     id: `arp-${slug(root)}-${quality}`,
     root,
     quality,
-    title: `${italianOf(root)} ${quality}`,
+    title: `${itName(root)} ${quality}`,
     level,
     rh: h.rh,
     lh: h.lh,
-    note: `${notes.map(n => italianOf(n)).join('-')}.${hint} ${handLine('Destra', notes, h.rh, true)} ${handLine('Sinistra', notes, h.lh, true)}`,
   };
 }
 
@@ -480,31 +522,31 @@ const ROOTS_FOR: Record<ChordQuality, string[]> = {
 /** Le tonalità per nome, a partire dalla classe di altezza. */
 const MAJOR_KEY = ['Do', 'Re♭', 'Re', 'Mi♭', 'Mi', 'Fa', 'Fa♯', 'Sol', 'La♭', 'La', 'Si♭', 'Si'];
 const MINOR_KEY = ['Do', 'Do♯', 'Re', 'Mi♭', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'Si♭', 'Si'];
-const maj = (pc: number) => `${MAJOR_KEY[((pc % 12) + 12) % 12]} maggiore`;
-const min = (pc: number) => `${MINOR_KEY[((pc % 12) + 12) % 12]} minore`;
+const maj = (pc: number) => t('{n} maggiore', { n: nameIn(MAJOR_KEY[((pc % 12) + 12) % 12], true) });
+const min = (pc: number) => t('{n} minore', { n: nameIn(MINOR_KEY[((pc % 12) + 12) % 12], true) });
 
 /** Dove si incontra l'accordo: i gradi che occupa nelle tonalità, ricavati dagli intervalli. */
 function usageOf(root: string, quality: ChordQuality): string {
   const r = pcOf(root);
   switch (quality) {
     case 'maggiore':
-      return `È la tonica di ${maj(r)}, la sottodominante (IV) di ${maj(r - 5)} e la dominante (V) di ${maj(r + 5)} e di ${min(r + 5)}.`;
+      return t('È la tonica di {a}, la sottodominante (IV) di {b} e la dominante (V) di {c} e di {d}.', { a: maj(r), b: maj(r - 5), c: maj(r + 5), d: min(r + 5) });
     case 'minore':
-      return `È la tonica di ${min(r)}; in maggiore è il II grado di ${maj(r - 2)}, il III di ${maj(r - 4)} e il VI di ${maj(r + 3)}, la sua relativa.`;
+      return t('È la tonica di {a}; in maggiore è il II grado di {b}, il III di {c} e il VI di {d}, la sua relativa.', { a: min(r), b: maj(r - 2), c: maj(r - 4), d: maj(r + 3) });
     case 'settima di dominante':
-      return `È il V7 di ${maj(r + 5)} e di ${min(r + 5)}: suonalo e fermati, chiede di risolvere sulla tonica.`;
+      return t('È il V7 di {a} e di {b}: suonalo e fermati, chiede di risolvere sulla tonica.', { a: maj(r + 5), b: min(r + 5) });
     case 'settima maggiore':
-      return `È il I grado di ${maj(r)} e il IV di ${maj(r - 5)} con la settima: il suono morbido del jazz e della bossa nova.`;
+      return t('È il I grado di {a} e il IV di {b} con la settima: il suono morbido del jazz e della bossa nova.', { a: maj(r), b: maj(r - 5) });
     case 'settima minore':
-      return `È il II grado di ${maj(r - 2)}: con il V7 e il I forma il II-V-I. È anche il III di ${maj(r - 4)} e il VI di ${maj(r + 3)}.`;
+      return t('È il II grado di {a}: con il V7 e il I forma il II-V-I. È anche il III di {b} e il VI di {c}.', { a: maj(r - 2), b: maj(r - 4), c: maj(r + 3) });
     case 'diminuito':
-      return `È il VII grado di ${maj(r + 1)} e di ${min(r + 1)} (armonica): instabile, tira verso la tonica a un semitono sopra.`;
+      return t('È il VII grado di {a} e di {b} (armonica): instabile, tira verso la tonica a un semitono sopra.', { a: maj(r + 1), b: min(r + 1) });
     case 'aumentato':
-      return `È il III grado di ${min(r - 3)} armonica. Divide l'ottava in tre terze maggiori uguali: suona sospeso, di passaggio.`;
+      return t('È il III grado di {a} armonica. Divide l\'ottava in tre terze maggiori uguali: suona sospeso, di passaggio.', { a: min(r - 3) });
     case 'semidiminuito':
-      return `È il VII grado di ${maj(r + 1)} e il II di ${min(r - 2)}: apre il II-V-I in minore.`;
+      return t('È il VII grado di {a} e il II di {b}: apre il II-V-I in minore.', { a: maj(r + 1), b: min(r - 2) });
     case 'settima diminuita':
-      return `È il VII grado di ${min(r + 1)} armonica. Quattro terze minori uguali: lo stesso accordo, rivoltato, porta a quattro tonalità diverse.`;
+      return t('È il VII grado di {a} armonica. Quattro terze minori uguali: lo stesso accordo, rivoltato, porta a quattro tonalità diverse.', { a: min(r + 1) });
   }
 }
 
@@ -517,9 +559,87 @@ export const chordExercises: ChordExercise[] = CHORD_QUALITIES.flatMap(({ qualit
       id: `ch-${slug(root)}-${quality.replace(/ /g, '-')}`,
       root,
       quality,
-      title: `${italianOf(root)} ${label}`,
+      title: `${itName(root)} ${label}`,
       level,
-      usage: `${buildChord(root, quality).map(n => italianOf(n)).join('-')}. ${usageOf(root, quality)}`,
     };
   }),
 );
+
+// ── I testi, nella lingua corrente ──────────────────────────────────────────
+// Si chiamano al momento di mostrare (non a livello di modulo): così seguono la
+// lingua scelta. In italiano restituiscono esattamente i testi di sempre.
+
+/** "Do maggiore", "La minore armonica"… */
+export function scaleTitle(ex: ScaleExercise): string {
+  const n = nameIn(italianOf(ex.root));
+  switch (ex.type) {
+    case 'maggiore': return t('{n} maggiore', { n });
+    case 'minore naturale': return t('{n} minore naturale', { n });
+    case 'minore armonica': return t('{n} minore armonica', { n });
+    case 'minore melodica': return t('{n} minore melodica', { n });
+  }
+}
+
+/** La nota didattica della scala: scritta a mano, oppure ricavata dai dati. */
+export function scaleNote(ex: ScaleExercise): string {
+  return ex.note !== undefined ? t(ex.note) : minorScaleNote(ex);
+}
+
+/** "Do maggiore", "La minore", "Sol settima (G7)". */
+export function arpeggioTitle(ex: ArpeggioExercise): string {
+  const n = nameIn(italianOf(ex.root));
+  if (ex.quality === 'maggiore') return t('{n} maggiore', { n });
+  if (ex.quality === 'minore') return t('{n} minore', { n });
+  return t(ex.title);
+}
+
+export function arpeggioNote(ex: ArpeggioExercise): string {
+  return ex.note !== undefined ? t(ex.note) : generatedArpeggioNote(ex);
+}
+
+/** "Do maggiore", "Sol settima", "Si diminuito"… (il nome del tipo è `label` di CHORD_QUALITIES). */
+export function chordTitle(ex: ChordExercise): string {
+  const n = nameIn(italianOf(ex.root));
+  switch (ex.quality) {
+    case 'maggiore': return t('{n} maggiore', { n });
+    case 'minore': return t('{n} minore', { n });
+    case 'settima di dominante': return t('{n} settima', { n });
+    case 'settima maggiore': return t('{n} settima maggiore', { n });
+    case 'settima minore': return t('{n} settima minore', { n });
+    case 'diminuito': return t('{n} diminuito', { n });
+    case 'aumentato': return t('{n} aumentato', { n });
+    case 'semidiminuito': return t('{n} semidiminuito', { n });
+    case 'settima diminuita': return t('{n} settima diminuita', { n });
+  }
+}
+
+/** Dove si incontra l'accordo: scritto a mano, oppure ricavato dai gradi. */
+export function chordUsage(ex: ChordExercise): string {
+  if (ex.usage !== undefined) return t(ex.usage);
+  const notes = buildChord(ex.root, ex.quality).map(n => nameIn(italianOf(n))).join('-');
+  return `${notes}. ${usageOf(ex.root, ex.quality)}`;
+}
+
+// ── I filtri dell'elenco ────────────────────────────────────────────────────
+// Etichette in italiano: chi le mostra le traduce con t().
+
+export const SCALE_FILTERS: { value: ScaleType; label: string }[] = [
+  { value: 'maggiore', label: 'Maggiori' },
+  { value: 'minore naturale', label: 'Minori naturali' },
+  { value: 'minore armonica', label: 'Minori armoniche' },
+  { value: 'minore melodica', label: 'Minori melodiche' },
+];
+
+export type ArpFilter = 'maggiore' | 'minore' | 'settima';
+export const ARP_FILTERS: { value: ArpFilter; label: string }[] = [
+  { value: 'maggiore', label: 'Maggiori' },
+  { value: 'minore', label: 'Minori' },
+  { value: 'settima', label: 'Settima' },
+];
+export const arpKind = (ex: ArpeggioExercise): ArpFilter => (ex.quality === 'maggiore' || ex.quality === 'minore' ? ex.quality : 'settima');
+
+export type ChordFilter = 'da studiare' | ChordQuality;
+export const CHORD_FILTERS: { value: ChordFilter; label: string }[] = [
+  { value: 'da studiare', label: 'Da studiare' },
+  ...CHORD_QUALITIES.map(q => ({ value: q.quality, label: q.quality === 'settima di dominante' ? 'settima' : q.label })),
+];

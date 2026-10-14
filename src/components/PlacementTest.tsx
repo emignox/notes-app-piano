@@ -15,6 +15,7 @@ import type { AnswerState, NoteEntry } from '../types';
 import { curriculum, stages } from '../data/curriculum';
 import { sameSpelling } from '../lib/notes';
 import { haptics } from '../lib/haptics';
+import { t } from '../i18n';
 import { Btn, Card, Panel, Pill } from './ui';
 import { Staff } from './Staff';
 import { NoteNameButtons } from './NoteNameButtons';
@@ -148,19 +149,19 @@ export function PlacementTest({ onComplete }: { onComplete: (unlockedCount: numb
     return (
       <Card className="overflow-hidden p-0">
         <div className="bg-gradient-to-br from-brand/25 via-brand/10 to-transparent p-5">
-          <Pill tone="brand"><GraduationCap className="h-3.5 w-3.5" /> punto di partenza</Pill>
-          <h2 className="mt-4 text-xl font-black leading-tight text-ink">Sai già leggere le note sul pentagramma?</h2>
+          <Pill tone="brand"><GraduationCap className="h-3.5 w-3.5" /> {t('punto di partenza')}</Pill>
+          <h2 className="mt-4 text-xl font-black leading-tight text-ink">{t('Sai già leggere le note sul pentagramma?')}</h2>
           <p className="mt-2 text-sm text-ink2">
-            Se sì, leggine qualcuna: in un minuto capiamo da dove partire, senza farti ripetere quello che sai.
+            {t('Se sì, leggine qualcuna: in un minuto capiamo da dove partire, senza farti ripetere quello che sai.')}
           </p>
         </div>
         <div className="space-y-2 p-4">
           <Btn full onClick={startTest}>
-            Un po' sì, mettimi alla prova
+            {t('Un po\' sì, mettimi alla prova')}
             <ArrowRight className="h-4 w-4" />
           </Btn>
           <Btn full variant="soft" onClick={() => onComplete(1, [])}>
-            No, parto da zero
+            {t('No, parto da zero')}
           </Btn>
         </div>
       </Card>
@@ -172,20 +173,22 @@ export function PlacementTest({ onComplete }: { onComplete: (unlockedCount: numb
     const right = answers.filter(a => a.correct).length;
     const message =
       passed === 0
-        ? 'Partiamo dalle fondamenta: una nota alla volta, dalla chiave di violino. Le note che hai già letto bene torneranno solo al momento giusto.'
+        ? t('Partiamo dalle fondamenta: una nota alla volta, dalla chiave di violino. Le note che hai già letto bene torneranno solo al momento giusto.')
         : passed === GROUPS.length
-          ? 'Leggi già entrambe le chiavi e le alterazioni. Si riparte dalle linee aggiuntive: il ripasso terrà vive le altre.'
-          : `${GROUPS.slice(0, passed).map(g => g.title).join(' e ')}: ok. Si riparte da ${GROUPS[passed].title.toLowerCase()}.`;
+          ? t('Leggi già entrambe le chiavi e le alterazioni. Si riparte dalle linee aggiuntive: il ripasso terrà vive le altre.')
+          : passed === 1
+            ? t('{a}: ok. Si riparte da {next}.', { a: t(GROUPS[0].title), next: t(GROUPS[passed].title).toLowerCase() })
+            : t('{a} e {b}: ok. Si riparte da {next}.', { a: t(GROUPS[0].title), b: t(GROUPS[1].title), next: t(GROUPS[passed].title).toLowerCase() });
     return (
       <Card className="anim-up flex flex-col gap-4 text-center">
         <div className="text-5xl">{passed === 0 ? '🌱' : passed === GROUPS.length ? '🎓' : '🎼'}</div>
         <div>
-          <h2 className="text-xl font-black text-ink">Il tuo punto di partenza</h2>
-          <p className="mt-1 text-sm text-ink2">{right}/{answers.length} note lette giuste</p>
+          <h2 className="text-xl font-black text-ink">{t('Il tuo punto di partenza')}</h2>
+          <p className="mt-1 text-sm text-ink2">{t('{right}/{total} note lette giuste', { right, total: answers.length })}</p>
         </div>
         <Panel className="px-4 py-3 text-left text-sm leading-relaxed text-ink2">{message}</Panel>
         <Btn full onClick={() => onComplete(unlocked, answers)}>
-          Inizia a studiare
+          {t('Inizia a studiare')}
           <ArrowRight className="h-4 w-4" />
         </Btn>
       </Card>
@@ -199,12 +202,12 @@ export function PlacementTest({ onComplete }: { onComplete: (unlockedCount: numb
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <Pill tone="brand">{group.title}</Pill>
+        <Pill tone="brand">{t(group.title)}</Pill>
         <span className="text-xs font-bold tabular-nums text-ink3">{done + 1}/{total}</span>
       </div>
       <Staff entries={[current]} activeIndex={0} answerState={state} variant="focus" />
       <Panel className="p-2.5">
-        <p className="mb-2 px-1 text-[11px] text-ink3">che nota è?</p>
+        <p className="mb-2 px-1 text-[11px] text-ink3">{t('che nota è?')}</p>
         <NoteNameButtons
           onSelect={answer}
           disabled={state !== 'idle'}
@@ -219,7 +222,7 @@ export function PlacementTest({ onComplete }: { onComplete: (unlockedCount: numb
         disabled={state !== 'idle'}
         className="self-center text-xs font-semibold text-ink3 underline decoration-dotted underline-offset-4"
       >
-        Non lo so
+        {t('Non lo so')}
       </button>
     </Card>
   );

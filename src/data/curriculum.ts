@@ -24,7 +24,8 @@ function makeNote(clef: Clef, toneNote: string, stageId: string, opts: NoteOpts 
     id,
     clef,
     pitch: `${letter}${acc}/${octave}`,
-    displayName: italianOf(toneNote),
+    // Letto al momento dell'uso: segue la lingua (in francese "Ré").
+    get displayName() { return italianOf(toneNote); },
     englishName: toneNote,
     vexflowKey: `${letter.toLowerCase()}${acc}/${octave}`,
     accidental: acc === '#' ? 'sharp' : acc === 'b' ? 'flat' : undefined,
@@ -36,7 +37,8 @@ function makeNote(clef: Clef, toneNote: string, stageId: string, opts: NoteOpts 
   };
 }
 
-const MNEMONICS: Record<string, string> = {
+/** In italiano: si traducono quando si mostrano (t(note.mnemonic)). */
+export const MNEMONICS: Record<string, string> = {
   c4_treble:
     'Il Do centrale è il tuo punto zero: unica linetta appoggiata sotto il pentagramma. Sul piano è il Do vicino alla serratura/logo.',
   g4_treble:
@@ -55,7 +57,9 @@ const MNEMONICS: Record<string, string> = {
 function build(clef: Clef, notes: string[], stageId: string): NoteEntry[] {
   return notes.map(n => {
     const entry = makeNote(clef, n, stageId);
-    return MNEMONICS[entry.id] ? { ...entry, mnemonic: MNEMONICS[entry.id] } : entry;
+    // Si modifica la voce invece di copiarla: la copia fisserebbe il nome in una lingua sola.
+    if (MNEMONICS[entry.id]) entry.mnemonic = MNEMONICS[entry.id];
+    return entry;
   });
 }
 

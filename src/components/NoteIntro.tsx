@@ -7,6 +7,7 @@ import { Play, Volume2 } from 'lucide-react';
 import type { NoteEntry } from '../types';
 import { describePosition, keyboardHint, landmarkHint } from '../lib/notes';
 import { stageOf } from '../data/curriculum';
+import { t } from '../i18n';
 import { Btn, Card, Panel, Pill } from './ui';
 import { Staff } from './Staff';
 import { PianoKeyboard } from './PianoKeyboard';
@@ -28,14 +29,14 @@ export function NoteIntro({ note, level, total, keyFrom, keyTo, onListen, onStar
     <Card className="anim-up flex flex-col items-center gap-4">
       <div className="text-center">
         <Pill tone="brand" className="mb-2">
-          {stage.emoji} {stage.title} · nota {level + 1} di {total}
+          {stage.emoji} {t(stage.title)} · {t('nota {n} di {total}', { n: level + 1, total })}
         </Pill>
         <h2 className="text-2xl font-black text-ink">
-          Nuova nota: <span className="text-brand">{note.displayName}</span>
+          {t('Nuova nota:')} <span className="text-brand">{note.displayName}</span>
         </h2>
         <p className="mt-0.5 text-sm text-ink2">
-          {note.englishName} · {note.clef === 'treble' ? 'chiave di violino' : 'chiave di basso'}
-          {note.landmark && ' · nota di riferimento ⭐'}
+          {note.englishName} · {note.clef === 'treble' ? t('chiave di violino') : t('chiave di basso')}
+          {note.landmark && ` · ${t('nota di riferimento ⭐')}`}
         </p>
       </div>
 
@@ -43,13 +44,13 @@ export function NoteIntro({ note, level, total, keyFrom, keyTo, onListen, onStar
 
       <Panel className="w-full space-y-2 px-4 py-3 text-sm leading-relaxed">
         <p className="font-semibold text-ink">📍 {landmarkHint(note.englishName, note.clef)}</p>
-        <p className="text-ink2">Si scrive sulla {describePosition(note.englishName, note.clef)}.</p>
-        <p className="text-ink2">🎹 Sul piano è {keyboardHint(note.englishName)}.</p>
-        {note.mnemonic && <p className="text-ink3">💡 {note.mnemonic}</p>}
+        <p className="text-ink2">{t('Si scrive sulla {pos}.', { pos: describePosition(note.englishName, note.clef) })}</p>
+        <p className="text-ink2">🎹 {t('Sul piano è {hint}.', { hint: keyboardHint(note.englishName) })}</p>
+        {note.mnemonic && <p className="text-ink3">💡 {t(note.mnemonic)}</p>}
       </Panel>
 
       <div className="w-full">
-        <p className="mb-1.5 text-center text-[11px] uppercase tracking-wider text-ink3">dove si trova</p>
+        <p className="mb-1.5 text-center text-[11px] uppercase tracking-wider text-ink3">{t('dove si trova')}</p>
         <PianoKeyboard
           from={keyFrom}
           to={keyTo}
@@ -63,11 +64,11 @@ export function NoteIntro({ note, level, total, keyFrom, keyTo, onListen, onStar
       <div className="flex w-full flex-wrap justify-center gap-3">
         <Btn variant="soft" onClick={onListen}>
           <Volume2 className="h-4 w-4" />
-          Ascolta
+          {t('Ascolta')}
         </Btn>
         <Btn onClick={onStart} className="px-7">
           <Play className="h-4 w-4" />
-          Inizia
+          {t('Inizia')}
         </Btn>
       </div>
     </Card>

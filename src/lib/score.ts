@@ -28,6 +28,7 @@ import type {
   PieceStep,
   StepDuration,
 } from '../types';
+import { t } from '../i18n';
 
 // ── Durate ──────────────────────────────────────────────────────────────────
 
@@ -364,15 +365,15 @@ export function stepAdvice(steps: PieceStep[], i: number, hand: Hand): string | 
   const step = steps[i];
   if (!step) return null;
   const bits: string[] = [];
-  if (step.dyn) bits.push(DYNAMIC_LABEL[step.dyn]);
-  if (step.hair === 'cresc') bits.push('crescendo');
-  if (step.hair === 'dim') bits.push('diminuendo');
-  if (step.text) bits.push(step.text);
+  if (step.dyn) bits.push(t(DYNAMIC_LABEL[step.dyn]));
+  if (step.hair === 'cresc') bits.push(t('crescendo'));
+  if (step.hair === 'dim') bits.push(t('diminuendo'));
+  if (step.text) bits.push(t(step.text));
   const marks = hand === 'left' ? step.l : step.r;
-  if (marks?.art) bits.push(ARTICULATION_LABEL[marks.art]);
-  else if (marks?.leg) bits.push('legato — non staccare il dito');
-  if (step.ped === 'down') bits.push('pedale giù');
-  if (step.ped === 'up') bits.push('pedale su');
+  if (marks?.art) bits.push(t(ARTICULATION_LABEL[marks.art]));
+  else if (marks?.leg) bits.push(t('legato — non staccare il dito'));
+  if (step.ped === 'down') bits.push(t('pedale giù'));
+  if (step.ped === 'up') bits.push(t('pedale su'));
   return bits.length > 0 ? bits.join(' · ') : null;
 }
 

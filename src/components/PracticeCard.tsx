@@ -34,6 +34,7 @@ import {
   sameSpelling,
 } from '../lib/notes';
 import { haptics } from '../lib/haptics';
+import { t } from '../i18n';
 import { Panel, Pill } from './ui';
 import { Staff } from './Staff';
 import { NoteNameButtons } from './NoteNameButtons';
@@ -144,18 +145,18 @@ export function PracticeCard({
   // Aiuto automatico: impalcatura che compare solo se ci si blocca.
   useEffect(() => {
     if (!settings.autoHint || hintOpen) return;
-    const t = setTimeout(() => setHintOpen(true), 6000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setHintOpen(true), 6000);
+    return () => clearTimeout(timer);
   }, [settings.autoHint, hintOpen]);
 
   // Suono guida prima della risposta: disattivato di default, resta un'opzione.
   useEffect(() => {
     if (!settings.hintSoundBefore || dir === 'find') return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       playNote(note.toneNote);
       suppressMic(2200);
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [settings.hintSoundBefore, dir, note.toneNote, playNote, suppressMic]);
 
   const submit = useCallback(
@@ -257,20 +258,20 @@ export function PracticeCard({
             type="button"
             onClick={() => { playNote(note.toneNote); suppressMic(1800); }}
             className="absolute right-2 top-2 rounded-xl border border-slate-300/60 bg-white/80 p-2 text-slate-600 shadow-sm active:scale-95"
-            title="Ascolta com'è questa nota"
+            title={t('Ascolta com\'è questa nota')}
           >
             <Volume2 className="h-4 w-4" />
           </button>
           {isNew && (
             <span className="absolute left-2 top-2">
-              <Pill tone="brand">✨ nuova</Pill>
+              <Pill tone="brand">{t('✨ nuova')}</Pill>
             </span>
           )}
         </div>
       ) : (
         <Panel className="flex flex-col items-center gap-1 px-4 py-5">
           <span className="text-xs font-semibold uppercase tracking-widest text-ink3">
-            Trova sulla tastiera
+            {t('Trova sulla tastiera')}
           </span>
           <span className="text-4xl font-black text-ink">
             {noteLabel(note.englishName, nameStyle === 'en' ? 'en' : 'it')}
@@ -291,7 +292,7 @@ export function PracticeCard({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
           </span>
-          <span className="text-sm text-ink2">Suonala sul piano…</span>
+          <span className="text-sm text-ink2">{t('Suonala sul piano…')}</span>
           {/* Livello in ingresso: se non si muove, il problema è il microfono */}
           <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-brand/20">
             <span
@@ -335,7 +336,7 @@ export function PracticeCard({
               ) : (
                 <p>{keyboardHint(note.englishName)}</p>
               )}
-              {note.mnemonic && <p className="text-ink3">{note.mnemonic}</p>}
+              {note.mnemonic && <p className="text-ink3">{t(note.mnemonic)}</p>}
             </div>
           </div>
         </Panel>
@@ -345,7 +346,7 @@ export function PracticeCard({
           onClick={() => { setHintOpen(true); setUsedHint(true); haptics.tap(); }}
           className="self-center text-xs font-semibold text-ink3 underline decoration-dotted underline-offset-4"
         >
-          Non me la ricordo, aiutami
+          {t('Non me la ricordo, aiutami')}
         </button>
       )}
 
@@ -353,10 +354,10 @@ export function PracticeCard({
       {useKeyboard ? (
         <Panel className="p-2">
           <div className="mb-1.5 flex items-center justify-between px-1">
-            <p className="text-[11px] text-ink3">tocca il tasto</p>
+            <p className="text-[11px] text-ink3">{t('tocca il tasto')}</p>
             {dir === 'read' && (
               <button type="button" onClick={onToggleInput} className="text-[11px] font-semibold text-brand">
-                usa i nomi
+                {t('usa i nomi')}
               </button>
             )}
           </div>
@@ -374,9 +375,9 @@ export function PracticeCard({
       ) : (
         <Panel className="p-2.5">
           <div className="mb-2 flex items-center justify-between px-1">
-            <p className="text-[11px] text-ink3">che nota è?</p>
+            <p className="text-[11px] text-ink3">{t('che nota è?')}</p>
             <button type="button" onClick={onToggleInput} className="text-[11px] font-semibold text-brand">
-              usa la tastiera
+              {t('usa la tastiera')}
             </button>
           </div>
           <NoteNameButtons

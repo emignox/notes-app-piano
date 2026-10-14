@@ -16,7 +16,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Clef, Direction, NoteEntry } from '../types';
-import { LETTERS, diatonicOf, diatonicIndex, isOnLine, italianOf, landmarkHint, parseNote, staffSlot } from './notes';
+import { LETTERS, diatonicOf, diatonicIndex, isOnLine, landmarkHint, nameInText, parseNote, staffSlot } from './notes';
+import { t } from '../i18n';
 
 export type MistakeKind = 'chiave' | 'gradino' | 'salto' | 'alterazione' | 'ottava' | 'altro';
 
@@ -26,16 +27,10 @@ export interface Mistake {
   text: string;
 }
 
-const CLEF_NAME: Record<Clef, string> = { treble: 'violino', bass: 'basso' };
-
 /** Prima linea dell'ALTRA chiave: è lì che finisce chi legge con gli occhi sbagliati. */
 const OTHER_BOTTOM: Record<Clef, number> = {
   treble: diatonicIndex('G', 2),
   bass: diatonicIndex('E', 4),
-};
-
-const CLEF_ANCHOR = {
-  bass: 'i due punti della chiave di basso abbracciano la 4ª linea, il Fa',
 };
 
 /** La lettera che si leggerebbe nella stessa posizione con l'altra chiave. */
@@ -55,7 +50,7 @@ function letterSteps(from: string, to: string): number {
 
 const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-const accWord = (acc: string) => (acc === '#' ? 'diesis ♯' : acc === 'b' ? 'bemolle ♭' : '');
+const accWord = (acc: string) => (acc === '#' ? t('diesis ♯') : acc === 'b' ? t('bemolle ♭') : '');
 
 /**
  * Perché la risposta `given` (un nome come "Mi", "F#", oppure un tasto "E4")
@@ -64,15 +59,15 @@ const accWord = (acc: string) => (acc === '#' ? 'diesis ♯' : acc === 'b' ? 'be
 export function diagnose(note: NoteEntry, given: string, dir: Direction): Mistake | null {
   const right = parseNote(note.englishName);
   const got = parseNote(given);
-  const name = italianOf(note.englishName);
+  const name = nameInText(note.englishName);
   const hasOctave = /\d/.test(given);
 
   if (got.letter === right.letter && got.acc === right.acc) {
     if (hasOctave && dir === 'find' && got.octave !== right.octave) {
-      const where = got.octave < right.octave ? 'più in alto' : 'più in basso';
+      const where = got.octave < right.octave ? t('più in alto') : t('più in basso');
       return {
         kind: 'ottava',
-        text: `Nota giusta, ottava sbagliata: questo ${name} sta un'ottava ${where}. Il Do centrale è il punto di partenza.`,
+        text: `${t('Nota giusta, ottava sbagliata: questo {name} sta un\'ottava {where}.', { name, where })} ${t('Il Do centrale è il punto di partenza.')}`,
       };
     }
     return null;
@@ -80,10 +75,15 @@ export function diagnose(note: NoteEntry, given: string, dir: Direction): Mistak
 
   if (got.letter === right.letter) {
     const text = right.acc && !got.acc
-      ? `C'era un ${accWord(right.acc)}: è ${name}, il tasto nero subito ${right.acc === '#' ? 'a destra' : 'a sinistra'} di ${italianOf(right.letter)}.`
+      ? t('C\'era un {acc}: è {name}, il tasto nero subito {side} di {letter}.', {
+          acc: accWord(right.acc),
+          name,
+          side: right.acc === '#' ? t('a destra') : t('a sinistra'),
+          letter: nameInText(right.letter),
+        })
       : !right.acc
-        ? `Nessuna alterazione davanti: è ${name} naturale, un tasto bianco.`
-        : `${accWord(right.acc)}, non ${accWord(got.acc)}: il diesis alza, il bemolle abbassa.`;
+        ? t('Nessuna alterazione davanti: è {name} naturale, un tasto bianco.', { name })
+        : t('{a}, non {b}: il diesis alza, il bemolle abbassa.', { a: accWord(right.acc), b: accWord(got.acc) });
     return { kind: 'alterazione', text };
   }
 
@@ -93,7 +93,10 @@ export function diagnose(note: NoteEntry, given: string, dir: Direction): Mistak
   if (dir === 'read' && note.clef === 'bass' && otherClefLetter(note.englishName, note.clef) === got.letter) {
     return {
       kind: 'chiave',
-      text: `L'hai letta come in chiave di ${CLEF_NAME.treble}. Qui la chiave è di ${CLEF_NAME.bass}: ${CLEF_ANCHOR.bass}, e da lì questa è ${name}.`,
+      text: t('L\'hai letta come in chiave di violino. Qui la chiave è di basso: {anchor}, e da lì questa è {name}.', {
+        anchor: t('i due punti della chiave di basso abbracciano la 4ª linea, il Fa'),
+        name,
+      }),
     };
   }
 
@@ -102,28 +105,28 @@ export function diagnose(note: NoteEntry, given: string, dir: Direction): Mistak
     if (dir === 'find') {
       return {
         kind: 'gradino',
-        text: `Il tasto accanto: ${name} è un gradino ${steps > 0 ? 'più a sinistra' : 'più a destra'}. Guarda i gruppi di tasti neri invece di contare.`,
+        text: `${t('Il tasto accanto: {name} è un gradino {side}.', { name, side: steps > 0 ? t('più a sinistra') : t('più a destra') })} ${t('Guarda i gruppi di tasti neri invece di contare.')}`,
       };
     }
-    const where = isOnLine(note.englishName, note.clef) ? 'SU una linea (la linea la taglia a metà)' : 'IN uno spazio (fra due linee)';
+    const where = isOnLine(note.englishName, note.clef) ? t('SU una linea (la linea la taglia a metà)') : t('IN uno spazio (fra due linee)');
     return {
       kind: 'gradino',
-      text: `Un gradino ${steps > 0 ? 'più in alto' : 'più in basso'} del vero: la nota sta ${where}. ${cap(landmarkHint(note.englishName, note.clef))}.`,
+      text: `${t('Un gradino {dir} del vero: la nota sta {where}.', { dir: steps > 0 ? t('più in alto') : t('più in basso'), where })} ${cap(landmarkHint(note.englishName, note.clef))}.`,
     };
   }
 
   if (Math.abs(steps) === 2 && dir === 'read') {
     return {
       kind: 'salto',
-      text: `Due gradi di distanza: hai contato una linea ${steps > 0 ? 'di troppo' : 'in meno'}. Non contare dal bordo: ${landmarkHint(note.englishName, note.clef)}.`,
+      text: `${t('Due gradi di distanza: hai contato una linea {err}.', { err: steps > 0 ? t('di troppo') : t('in meno') })} ${t('Non contare dal bordo: {hint}.', { hint: landmarkHint(note.englishName, note.clef) })}`,
     };
   }
 
   return {
     kind: 'altro',
     text: dir === 'read'
-      ? `Era ${name}: ${landmarkHint(note.englishName, note.clef)}.`
-      : `Era ${name}: cercalo partendo dai gruppi di tasti neri.`,
+      ? t('Era {name}: {hint}.', { name, hint: landmarkHint(note.englishName, note.clef) })
+      : t('Era {name}: cercalo partendo dai gruppi di tasti neri.', { name }),
   };
 }
 

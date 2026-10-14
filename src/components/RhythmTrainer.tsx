@@ -28,6 +28,7 @@ import {
   scoreTaps,
 } from '../lib/rhythmReading';
 import { haptics } from '../lib/haptics';
+import { t } from '../i18n';
 import { Bar, Btn, Card, Panel, Pill, Segmented } from './ui';
 import type { Notify } from './ui';
 import { RhythmStaff } from './RhythmStaff';
@@ -105,10 +106,10 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
     const beatSec = 60 / bpm;
     const events: TimelineEvent[] = [];
     for (let b = 0; b < beats; b++) events.push({ at: b * beatSec, kind: b % 4 === 0 ? 'accent' : 'click' });
-    let t = 0;
+    let pos = 0;
     for (const bar of pattern) for (const item of bar) {
-      if (!item.rest) events.push({ at: t * beatSec, kind: 'note', note: 'G4', dur: Math.max(0.12, item.beats * beatSec * 0.85) });
-      t += item.beats;
+      if (!item.rest) events.push({ at: pos * beatSec, kind: 'note', note: 'G4', dur: Math.max(0.12, item.beats * beatSec * 0.85) });
+      pos += item.beats;
     }
     mic.suppress(Math.ceil((beats * beatSec + 1.2) * 1000));
     setPhase('listening');
@@ -126,7 +127,7 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
     const run = runRef.current;
     if (!run) return;
     const earliest = run.zero + (COUNT_IN - 0.5) * run.beatMs;
-    const taps = tapsRef.current.filter(t => t >= earliest);
+    const taps = tapsRef.current.filter(at => at >= earliest);
     const score = scoreTaps(run.expected, taps);
     stopAll();
     setResult(score);
@@ -137,7 +138,7 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
       audio.playSuccess();
     }
     if (levelUp) {
-      notify('🥁', `Ritmo: livello ${levelUp}`, levelInfo(levelUp).title);
+      notify('🥁', t('Ritmo: livello {n}', { n: levelUp }), t(levelInfo(levelUp).title));
       setLevel(levelUp);
       setBpm(levelInfo(levelUp).bpm);
     }
@@ -206,10 +207,10 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
   const close = result ? result.grades.filter(g => g === 'quasi').length : 0;
   const tendency = result
     ? Math.abs(result.bias) < 25
-      ? 'tempo centrato'
+      ? t('tempo centrato')
       : result.bias < 0
-        ? `tendi ad anticipare (${Math.round(-result.bias)} ms)`
-        : `tendi a ritardare (${Math.round(result.bias)} ms)`
+        ? t('tendi ad anticipare ({ms} ms)', { ms: Math.round(-result.bias) })
+        : t('tendi a ritardare ({ms} ms)', { ms: Math.round(result.bias) })
     : '';
   const missed = result ? result.grades.filter(g => g === 'persa').length : 0;
 
@@ -218,12 +219,12 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
       <Card>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Leggi il ritmo · livello {level}</p>
-            <p className="mt-1 text-base font-black text-ink">{info.title}</p>
-            <p className="mt-0.5 text-xs leading-snug text-ink2">{info.focus}</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand">{t('Leggi il ritmo · livello {n}', { n: level })}</p>
+            <p className="mt-1 text-base font-black text-ink">{t(info.title)}</p>
+            <p className="mt-0.5 text-xs leading-snug text-ink2">{t(info.focus)}</p>
           </div>
           <Pill className="flex-shrink-0 whitespace-nowrap" tone={progress.data.rhythm.clean > 0 && level === reached ? 'good' : 'neutral'}>
-            {level === reached && reached < MAX_RHYTHM_LEVEL ? `${progress.data.rhythm.clean}/3 pulite` : `max ${reached}`}
+            {level === reached && reached < MAX_RHYTHM_LEVEL ? t('{n}/3 pulite', { n: progress.data.rhythm.clean }) : t('max {n}', { n: reached })}
           </Pill>
         </div>
         <div className="mt-3 flex gap-1 overflow-x-auto thin-scroll">
@@ -253,7 +254,7 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
         <div className="flex items-center gap-3">
           <span className="w-20 flex-shrink-0 whitespace-nowrap text-sm font-black tabular-nums text-ink">{bpm} bpm</span>
           <input
-            aria-label="Velocità"
+            aria-label={t('Velocità')}
             type="range"
             min={40}
             max={130}
@@ -271,20 +272,20 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
             onPointerDown={tap}
             className="anim-glow flex aspect-[5/2] w-full flex-col items-center justify-center rounded-3xl border-2 border-brand bg-brand/20 text-brand active:scale-[0.98]"
           >
-            <span className="text-4xl font-black tabular-nums">{countIn ?? 'TOCCA'}</span>
+            <span className="text-4xl font-black tabular-nums">{countIn ?? t('TOCCA')}</span>
             <span className="mt-1 text-xs font-semibold">
-              {countIn !== null ? 'ascolta il tempo…' : mic.isListening ? 'oppure suona un tasto' : 'batti ogni nota'}
+              {countIn !== null ? t('ascolta il tempo…') : mic.isListening ? t('oppure suona un tasto') : t('batti ogni nota')}
             </span>
           </button>
         ) : (
           <div className="grid grid-cols-2 gap-2">
             <Btn variant="soft" onClick={listen} disabled={phase === 'listening'}>
               <Volume2 className="h-4 w-4" />
-              Ascolta
+              {t('Ascolta')}
             </Btn>
             <Btn onClick={start} disabled={phase === 'listening'}>
               {phase === 'result' ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {phase === 'result' ? 'Riprova' : 'Via'}
+              {phase === 'result' ? t('Riprova') : t('Via')}
             </Btn>
           </div>
         )}
@@ -298,7 +299,7 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
               onChange={e => setClicks(e.target.checked)}
               className="accent-[var(--c-brand)]"
             />
-            metronomo durante la figura
+            {t('metronomo durante la figura')}
           </label>
           <button
             type="button"
@@ -307,7 +308,7 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
             className="flex items-center gap-1 font-semibold text-brand disabled:opacity-40"
           >
             <Shuffle className="h-3.5 w-3.5" />
-            nuova figura
+            {t('nuova figura')}
           </button>
         </div>
       </Card>
@@ -316,25 +317,29 @@ function RhythmReading({ audio, progress, mic, notify }: RhythmTrainerProps) {
         <Panel className="space-y-1.5 p-4">
           <div className="flex items-center justify-between">
             <p className="font-black text-ink">
-              {result.clean ? 'A tempo! ✓' : `${hits}/${result.grades.length} a tempo${close ? ` · ${close} quasi` : ''}`}
+              {result.clean
+                ? t('A tempo! ✓')
+                : close
+                  ? t('{hits}/{total} a tempo · {close} quasi', { hits, total: result.grades.length, close })
+                  : t('{hits}/{total} a tempo', { hits, total: result.grades.length })}
             </p>
             <Pill tone={result.clean ? 'good' : 'warn'}>± {Math.round(result.meanAbs)} ms</Pill>
           </div>
           <p className="text-sm text-ink2">
             {tendency}
-            {missed > 0 && ` · ${missed} ${missed === 1 ? 'nota persa' : 'note perse'}`}
-            {result.extra > 0 && ` · ${result.extra} ${result.extra === 1 ? 'colpo in più' : 'colpi in più'}`}.
+            {missed > 0 && ` · ${missed === 1 ? t('1 nota persa') : t('{n} note perse', { n: missed })}`}
+            {result.extra > 0 && ` · ${result.extra === 1 ? t('1 colpo in più') : t('{n} colpi in più', { n: result.extra })}`}.
           </p>
           <p className="text-xs leading-relaxed text-ink3">
             {result.clean
-              ? 'Ancora due figure così e il livello sale. Prova a non guardare il pulsante: guarda la figura.'
+              ? t('Ancora due figure così e il livello sale. Prova a non guardare il pulsante: guarda la figura.')
               : result.extra > 0
-                ? 'Hai battuto anche dove c\'è una pausa o una nota lunga: conta i movimenti a voce, senza battere.'
+                ? t('Hai battuto anche dove c\'è una pausa o una nota lunga: conta i movimenti a voce, senza battere.')
                 : Math.abs(result.bias) >= 60
-                  ? 'Lo scarto è sempre dalla stessa parte: ascolta il clic e batti INSIEME, non dopo.'
-                  : 'Ascoltala una volta, poi rifalla un po\' più lenta: la velocità arriva dopo la precisione.'}
+                  ? t('Lo scarto è sempre dalla stessa parte: ascolta il clic e batti INSIEME, non dopo.')
+                  : t('Ascoltala una volta, poi rifalla un po\' più lenta: la velocità arriva dopo la precisione.')}
           </p>
-          <p className="text-[11px] text-ink3">Verde: a tempo · giallo: quasi · rosso: fuori tempo o persa.</p>
+          <p className="text-[11px] text-ink3">{t('Verde: a tempo · giallo: quasi · rosso: fuori tempo o persa.')}</p>
         </Panel>
       )}
     </div>
@@ -375,7 +380,7 @@ function PulseTrainer({ audio, progress }: RhythmTrainerProps) {
       const avg = Math.round(next.reduce((sum, n) => sum + Math.abs(n), 0) / next.length);
       const signed = next.reduce((sum, n) => sum + n, 0) / next.length;
       const score = Math.max(0, Math.round(100 - avg / 1.5));
-      const tendency = Math.abs(signed) < 18 ? 'tempo equilibrato' : signed < 0 ? 'tendi ad anticipare' : 'tendi a ritardare';
+      const tendency = Math.abs(signed) < 18 ? t('tempo equilibrato') : signed < 0 ? t('tendi ad anticipare') : t('tendi a ritardare');
       setResult({ avg, tendency, score });
       progress.recordTheory(`rhythm:${bpm}`, avg <= 90);
     }
@@ -386,28 +391,28 @@ function PulseTrainer({ audio, progress }: RhythmTrainerProps) {
       <Card className="overflow-hidden p-0">
         <div className="bg-gradient-to-br from-fuchsia-500/20 via-brand/10 to-transparent p-5">
           <div className="flex items-start justify-between gap-3">
-            <div><p className="text-xs font-black uppercase tracking-[0.18em] text-brand">Battito</p><h2 className="mt-1 text-2xl font-black text-ink">Senti il battito, non inseguirlo.</h2></div>
+            <div><p className="text-xs font-black uppercase tracking-[0.18em] text-brand">{t('Battito')}</p><h2 className="mt-1 text-2xl font-black text-ink">{t('Senti il battito, non inseguirlo.')}</h2></div>
             <Gauge className="h-7 w-7 text-brand" />
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-ink2">Avvia il metronomo e tocca il grande pulsante per otto battiti. Misuriamo precisione e tendenza.</p>
+          <p className="mt-2 text-sm leading-relaxed text-ink2">{t('Avvia il metronomo e tocca il grande pulsante per otto battiti. Misuriamo precisione e tendenza.')}</p>
         </div>
         <div className="space-y-4 p-4">
           <div className="flex items-center gap-3">
             <span className="w-16 text-sm font-black tabular-nums text-ink">{bpm} BPM</span>
-            <input aria-label="Velocità ritmo" type="range" min={40} max={140} step={4} value={bpm} disabled={running} onChange={e => setBpm(Number(e.target.value))} className="w-full accent-[var(--c-brand)]" />
+            <input aria-label={t('Velocità ritmo')} type="range" min={40} max={140} step={4} value={bpm} disabled={running} onChange={e => setBpm(Number(e.target.value))} className="w-full accent-[var(--c-brand)]" />
           </div>
           {!running ? (
-            <Btn full onClick={start}>{result ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}{result ? 'Riprova' : 'Avvia il metronomo'}</Btn>
+            <Btn full onClick={start}>{result ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}{result ? t('Riprova') : t('Avvia il metronomo')}</Btn>
           ) : (
-            <button type="button" onPointerDown={tap} className="anim-glow flex aspect-[3/1] w-full items-center justify-center rounded-3xl border-2 border-brand bg-brand/20 text-xl font-black text-brand active:scale-[0.98]">TOCCA · {taps.length}/8</button>
+            <button type="button" onPointerDown={tap} className="anim-glow flex aspect-[3/1] w-full items-center justify-center rounded-3xl border-2 border-brand bg-brand/20 text-xl font-black text-brand active:scale-[0.98]">{t('TOCCA')} · {taps.length}/8</button>
           )}
           <Bar pct={taps.length / 8} />
         </div>
       </Card>
       {result && (
         <Panel className="p-4">
-          <div className="flex items-center justify-between"><p className="font-black text-ink">Precisione {result.score}%</p><Pill tone={result.avg <= 90 ? 'good' : 'warn'}>± {result.avg} ms</Pill></div>
-          <p className="mt-2 text-sm text-ink2">{result.tendency}. {result.avg <= 60 ? 'Ottimo controllo.' : result.avg <= 110 ? 'Buona base: prova ancora allo stesso tempo.' : 'Rallenta di 8 BPM e cerca di respirare sul battito.'}</p>
+          <div className="flex items-center justify-between"><p className="font-black text-ink">{t('Precisione {score}%', { score: result.score })}</p><Pill tone={result.avg <= 90 ? 'good' : 'warn'}>± {result.avg} ms</Pill></div>
+          <p className="mt-2 text-sm text-ink2">{result.tendency}. {result.avg <= 60 ? t('Ottimo controllo.') : result.avg <= 110 ? t('Buona base: prova ancora allo stesso tempo.') : t('Rallenta di 8 BPM e cerca di respirare sul battito.')}</p>
         </Panel>
       )}
     </div>
@@ -422,8 +427,8 @@ export function RhythmTrainer(props: RhythmTrainerProps) {
         value={mode}
         onChange={setMode}
         options={[
-          { value: 'lettura' as const, label: 'Leggi il ritmo' },
-          { value: 'battito' as const, label: 'Battito' },
+          { value: 'lettura' as const, label: t('Leggi il ritmo') },
+          { value: 'battito' as const, label: t('Battito') },
         ]}
       />
       {mode === 'lettura' ? <RhythmReading {...props} /> : <PulseTrainer {...props} />}

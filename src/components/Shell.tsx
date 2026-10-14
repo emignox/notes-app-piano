@@ -4,6 +4,7 @@
 
 import { BarChart3, BookOpen, Flame, ListMusic, Mic, MicOff, Music4, Settings, Volume2, VolumeX, Zap } from 'lucide-react';
 import type { LevelInfo } from '../lib/xp';
+import { t } from '../i18n';
 import { Ring } from './ui';
 
 export type Tab = 'practice' | 'melody' | 'technique' | 'sprint' | 'stats' | 'settings';
@@ -59,7 +60,7 @@ export function TopBar({
     <header className="sticky top-0 z-20 border-b border-line/60 bg-canvas/75 backdrop-blur-xl backdrop-saturate-150 safe-top">
       <div className="mx-auto flex h-13 max-w-2xl items-center gap-2 px-4">
         {/* Il livello come marchio: l'anello si riempie con l'esperienza. */}
-        <div className="flex min-w-0 items-center gap-2.5" title={`Livello ${level.level} · ${level.intoLevel}/${level.needed} XP`}>
+        <div className="flex min-w-0 items-center gap-2.5" title={t('Livello {level} · {into}/{needed} XP', { level: level.level, into: level.intoLevel, needed: level.needed })}>
           <Ring pct={level.pct} size={30} stroke={2.5}>
             <span className="text-[11px] font-bold tabular-nums text-ink">{level.level}</span>
           </Ring>
@@ -69,11 +70,11 @@ export function TopBar({
         <div className="ml-auto flex items-center gap-1">
           <span
             className={`mr-1 flex items-center gap-1 text-[13px] font-semibold tabular-nums ${dayStreak > 0 ? 'text-orange-400' : 'text-ink3'}`}
-            title="Giorni di fila"
+            title={t('Giorni di fila')}
           >
             <Flame className="h-4 w-4" /> {dayStreak}
           </span>
-          <span className="mr-1 flex items-center" title={`Obiettivo di oggi: ${todayAnswers}/${dailyGoal}`}>
+          <span className="mr-1 flex items-center" title={t('Obiettivo di oggi: {done}/{goal}', { done: todayAnswers, goal: dailyGoal })}>
             <Ring pct={goalPct} size={22} stroke={2.5} color={goalPct >= 1 ? '#10b981' : 'var(--c-brand)'}>
               {goalPct >= 1 ? <span className="text-[9px] text-emerald-400">✓</span> : null}
             </Ring>
@@ -84,8 +85,8 @@ export function TopBar({
             type="button"
             onClick={onTestAudio}
             className={`${ICON_BTN} ${audioOn ? 'text-ink2 hover:bg-surface2' : 'bg-amber-500/15 text-amber-400'}`}
-            title={audioOn ? 'Prova il suono' : 'Audio spento — tocca per attivarlo'}
-            aria-label={audioOn ? 'Prova il suono' : 'Attiva l’audio'}
+            title={audioOn ? t('Prova il suono') : t('Audio spento — tocca per attivarlo')}
+            aria-label={audioOn ? t('Prova il suono') : t('Attiva l’audio')}
           >
             {audioOn ? <Volume2 className="h-[18px] w-[18px]" /> : <VolumeX className="h-[18px] w-[18px]" />}
           </button>
@@ -94,8 +95,8 @@ export function TopBar({
             type="button"
             onClick={onToggleMic}
             className={`${ICON_BTN} ${micOn ? 'bg-brand text-white' : 'text-ink2 hover:bg-surface2'}`}
-            title={micOn ? 'Spegni il microfono' : 'Rispondi suonando sul piano'}
-            aria-label={micOn ? 'Spegni il microfono' : 'Accendi il microfono'}
+            title={micOn ? t('Spegni il microfono') : t('Rispondi suonando sul piano')}
+            aria-label={micOn ? t('Spegni il microfono') : t('Accendi il microfono')}
             aria-pressed={micOn}
           >
             {micOn ? <Mic className="h-[18px] w-[18px]" /> : <MicOff className="h-[18px] w-[18px]" />}
@@ -105,8 +106,8 @@ export function TopBar({
             type="button"
             onClick={onOpenSettings}
             className={`${ICON_BTN} ${settingsOpen ? 'bg-surface2 text-ink' : 'text-ink2 hover:bg-surface2'}`}
-            title="Opzioni"
-            aria-label="Opzioni"
+            title={t('Opzioni')}
+            aria-label={t('Opzioni')}
           >
             <Settings className="h-[18px] w-[18px]" />
           </button>
@@ -143,7 +144,7 @@ export function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => v
               }`}
             >
               <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.2 : 1.8} />
-              <span className="text-[10px] font-medium leading-none">{label}</span>
+              <span className="text-[10px] font-medium leading-none">{t(label)}</span>
               {active && <span className="absolute top-0 h-0.5 w-6 rounded-full bg-brand" />}
             </button>
           );
