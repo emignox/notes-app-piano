@@ -33,6 +33,7 @@ import {
 } from '../lib/score';
 import { keyInfo } from '../lib/keys';
 import { haptics } from '../lib/haptics';
+import { monoAccepts, monoCounts } from '../lib/micFollow';
 import type { ProgressApi } from '../hooks/useProgress';
 import type { AudioApi } from '../hooks/useAudio';
 import type { ChordMatch, LiveNote } from '../hooks/usePitchDetection';
@@ -54,13 +55,13 @@ interface PieceViewProps {
   audio: AudioApi;
   mic: {
     isListening: boolean;
-    confirmedNote: { note: LiveNote; id: number; onsetAt?: number } | null;
+    confirmedNote: { note: LiveNote; id: number; onsetAt?: number; cloudy?: boolean; echo?: boolean } | null;
     liveNote: LiveNote | null;
     level: number;
     suppress: (ms?: number) => void;
     release: (tailMs?: number) => void;
     external?: (notes: { midi: number; delayMs: number }[]) => void;
-    expect: (notes: number[] | null, token?: string) => void;
+    expect: (notes: number[] | null, token?: string, upcoming?: number[]) => void;
     chordMatch: ChordMatch | null;
   };
   notify: Notify;
@@ -180,6 +181,8 @@ function PieceChallenge({
   const [wrong, setWrong] = useState<{ note: string; hand: 'right' | 'left' } | null>(null);
 
   const stepErrorRef = useRef(false);
+  /** Il giro è cominciato da una nota toccata sul rigo (vedi `jumpTo`). */
+  const jumpedRef = useRef(false);
   const micBaseRef = useRef(mic.chordMatch?.id ?? 0);
   const savedRef = useRef(false);
 
@@ -257,9 +260,15 @@ function PieceChallenge({
     (finalResults: NoteResult[]) => {
       if (savedRef.current) return;
       savedRef.current = true;
-      const slice = finalResults.slice(part.from, part.to);
+      // Dopo un salto i passi saltati non contano (né come giusti né come sbagliati).
+      const slice = finalResults.slice(part.from, part.to).filter(r => !jumpedRef.current || r !== 'unanswered');
       const ok = slice.filter(r => r === 'correct').length;
       const pct = Math.round((ok / Math.max(1, slice.length)) * 100);
+      if (jumpedRef.current) {
+        if (pct === 100) audio.playSuccess();
+        setDone(true);
+        return;
+      }
       // Il record vale per mano E per sezione: finire otto battute con la
       // sinistra è un traguardo suo, e va contato come tale.
       const whole = part.to - part.from === piece.steps.length;
@@ -378,8 +387,14 @@ function PieceChallenge({
   const expect = mic.expect;
   const waitToken = `${waitIdx}-${hand}-${attempt}`;
   useEffect(() => {
-    expect(mic.isListening && !done && waitIdx >= 0 ? waitRequired.map(midiOf) : null, waitToken);
-  }, [expect, mic.isListening, done, waitIdx, waitRequired, waitToken]);
+    // Le note dei due passi dopo non sono rumore (vedi Leggio).
+    const upcoming: number[] = [];
+    for (let j = waitIdx + 1, n = 0; waitIdx >= 0 && j < part.to && n < 2; j++) {
+      const req = requiredNotes(piece.steps, j, hand);
+      if (req.length) { upcoming.push(...req.map(midiOf)); n++; }
+    }
+    expect(mic.isListening && !done && waitIdx >= 0 ? waitRequired.map(midiOf) : null, waitToken, upcoming);
+  }, [expect, mic.isListening, done, waitIdx, waitRequired, waitToken, part.to, piece.steps, hand]);
   useEffect(() => () => expect(null), [expect]);
 
   /** Note arrivate per un passo più avanti (dopo pause o legature): si va lì e si contano. */
@@ -434,10 +449,11 @@ function PieceChallenge({
     const c = mic.confirmedNote;
     if (!mic.isListening || !c || c.id <= monoBaseRef.current) return;
     monoBaseRef.current = c.id;
-    if ((c.onsetAt ?? Date.now()) < stepSinceRef.current - 30) return;
+    if (!monoCounts({ onset: c.onsetAt ?? Date.now(), cloudy: c.cloudy, echo: c.echo }, stepSinceRef.current)) return;
     const heard = midiOf(`${c.note.name}${c.note.octave}`);
     const pool = waitIdx > idx ? waitRequired : missing;
-    acceptFromMic(pool.filter(n => (midiOf(n) - heard) % 12 === 0).slice(0, 1).map(midiOf));
+    // Come nel Leggio: la nota stessa o la sua ottava, non due ottave più in là.
+    acceptFromMic(monoAccepts(pool.map(midiOf), heard));
   }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Riparte dall'inizio della sezione corrente. */
@@ -445,6 +461,7 @@ function PieceChallenge({
     (at: number) => {
       stopListening();
       savedRef.current = false;
+      jumpedRef.current = false;
       setIdx(at);
       setFound([]);
       setAttempt(a => a + 1);
@@ -460,6 +477,35 @@ function PieceChallenge({
   );
 
   const switchHand = useCallback((h: Hand) => { setHand(h); reset(part.from); }, [reset, part.from]);
+
+  /**
+   * Un tocco su una nota del rigo: si va lì. Dentro la sezione si continua
+   * da quel passo; fuori si passa alla sezione che lo contiene (senza loop).
+   * E si mostrano i tasti: chi tocca una nota vuole vedere dove sta sul piano.
+   */
+  const jumpTo = useCallback(
+    (i: number) => {
+      // Un giro cominciato da un salto non è un giro intero: niente record
+      // né loop intelligente (vedi `finish`).
+      jumpedRef.current = true;
+      if (i >= part.from && i < part.to) {
+        stopListening();
+        setIdx(i);
+        setFound([]);
+        setWrong(null);
+        setFeedback(null);
+        stepErrorRef.current = false;
+      } else {
+        const p = parts.findIndex((pp, k) => k < parts.length - 1 && i >= pp.from && i < pp.to);
+        setLoopBars(0);
+        setLoopMeasure(0);
+        setPartIdx(p >= 0 ? p : parts.length - 1);
+        reset(i);
+      }
+      setShowKeys(true);
+    },
+    [part.from, part.to, parts, stopListening, setFound, reset],
+  );
   const switchPart = useCallback(
     (i: number) => { setLoopBars(0); setLoopMeasure(0); setPartIdx(i); reset(parts[i].from); },
     [reset, parts],
@@ -679,6 +725,7 @@ function PieceChallenge({
         fingering={fingering}
         range={playingWhole ? { from: 0, to: piece.steps.length } : { from: part.from, to: part.to }}
         listening={playingIdx !== null}
+        onStepTap={jumpTo}
       />
 
       <Bar pct={doneCount / Math.max(1, total)} />

@@ -476,7 +476,7 @@ function walkApp(an, steps, detector) {
       if (pause === 0) { setAt = T; since = T - LOOKBACK; }
       continue;
     }
-    detector.expect?.(steps[k].req.filter(r => !found.has(r)), steps[k].req);
+    detector.expect?.(steps[k].req.filter(r => !found.has(r)), steps[k].req, [...(steps[k + 1]?.req ?? []), ...(steps[k + 2]?.req ?? [])]);
     for (const m of detector.notes(steps[k].req, since, setAt)) found.add(m);
     if (steps[k].req.every(r => found.has(r))) {
       out[k].done = T;
@@ -556,7 +556,7 @@ function chords(an, { fallback = false } = {}) {
       return fallback ? [...new Set([...got, ...leggioMono(an, upTo, req, waitSince)])] : got;
     },
     consume(req, T) { matcher.consume(req, T * 1000); },
-    expect(req, step) { matcher.expect(req, step); },
+    expect(req, step, upcoming) { matcher.expect(req, step, upcoming); },
   };
 }
 

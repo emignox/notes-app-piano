@@ -3,7 +3,8 @@
 //
 // Qui c'è solo il collegamento fra microfono, rilevatore di altezza e React.
 // Le decisioni — quando una nota conta come suonata — stanno in
-// `lib/noteTracker`, che si può far girare su una registrazione per misurare
+// `lib/micListener` (con `lib/noteTracker` e `lib/chordMatcher`), lo stesso
+// codice che il banco di prova fa girare su una registrazione per misurare
 // quante note riconosce davvero.
 //
 // Nei brani (Leggio, studio guidato) c'è un secondo ascolto, polifonico:
@@ -16,23 +17,31 @@
 //    rumore e guadagno automatico: sono fatti per la voce e falsano l'altezza;
 //  · lo stato React si aggiorna al massimo ~11 volte al secondo. Aggiornarlo a
 //    ogni frame ridisegnava tutta la carta 60 volte al secondo e rubava proprio
-//    il tempo di calcolo che serve al rilevamento.
+//    il tempo di calcolo che serve al rilevamento;
+//  · l'ascolto gira a un ritmo FISSO (ANALYSIS_MS), non a quello dello
+//    schermo: in risparmio energetico Safari disegna a 30 fotogrammi al
+//    secondo, e un ascolto legato al disegno perdeva accordi (banco
+//    `bench:semplice`: accordi della destra 6/8 a 60 al secondo, 3/8 a 30);
+//    con lo schermo a 120 Hz, al contrario, raddoppiava il calcolo e
+//    cambiava le soglie tarate a 60.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { PitchDetector } from 'pitchy';
-import { NoteTracker } from '../lib/noteTracker';
-import { ChordMatcher } from '../lib/chordMatcher';
+import { MicListener } from '../lib/micListener';
+import type { ChordMatch } from '../lib/micListener';
 import { setMicSession } from '../lib/audioSession';
+
+export type { ChordMatch } from '../lib/micListener';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 /** L'indicatore a schermo si aggiorna al massimo così spesso (in ms). */
 const UI_THROTTLE_MS = 90;
+/** Ogni quanto si ascolta (ms): 60 volte al secondo, qualunque sia lo schermo. */
+const ANALYSIS_MS = 1000 / 60;
 /** Finestra dello spettro per l'ascolto dei brani (~85 ms a 48 kHz). */
 const SPECTRUM_FFT = 4096;
-/** Una nuova attesa accetta anche gli attacchi appena prima (chi suona svelto). */
-const EXPECT_LOOKBACK_MS = 250;
 
 function midiToNote(midi: number): { name: string; octave: number } {
   return { name: NOTE_NAMES[midi % 12], octave: Math.floor(midi / 12) - 1 };
@@ -51,28 +60,10 @@ export interface ConfirmedNote {
   at: number;
   /** Quando è stato premuto il tasto (Date.now): per il ritmo conta questo. */
   onsetAt: number;
-}
-
-/**
- * Le note attese arrivate finora per l'attesa `token` (numeri MIDI), con un
- * numero che cambia a ogni arrivo. È CUMULATIVO: se due aggiornamenti
- * arrivano insieme e lo schermo ne vede solo l'ultimo, non si perde niente.
- */
-export interface ChordMatch {
-  token: string;
-  midis: number[];
-  id: number;
-}
-
-interface Expectation {
-  token: string;
-  /** Il token come l'ha dato chi aspetta (senza le note): torna negli eventi. */
-  user: string;
-  notes: number[];
-  since: number;
-  got: Set<number>;
-  /** Già "consumata" nel riconoscitore (le sue note non valgono per l'attesa dopo). */
-  consumed?: boolean;
+  /** Arrivata dentro una nuvola di note estranee (una voce, l'altoparlante): nei brani non conta. */
+  cloudy?: boolean;
+  /** È l'eco del passo appena preso: nei brani non conta. */
+  echo?: boolean;
 }
 
 export function usePitchDetection() {
@@ -85,32 +76,41 @@ export function usePitchDetection() {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number>(0);
+  /** Un'apertura del microfono in corso (vedi `start`). */
+  const startingRef = useRef(false);
+  /** Il ciclo dell'ascolto (un intervallo, non i fotogrammi dello schermo). */
+  const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const confirmIdRef = useRef(0);
-  const trackerRef = useRef(new NoteTracker());
   const lastPaintRef = useRef(0);
-  const matcherRef = useRef<ChordMatcher | null>(null);
-  const expectRef = useRef<Expectation | null>(null);
-  const matchIdRef = useRef(0);
+  /**
+   * L'ascolto. Nasce col primo microfono (serve la frequenza di
+   * campionamento) e resta: l'attesa delle note sopravvive se il microfono
+   * si spegne e si riaccende.
+   */
+  const listenerRef = useRef<MicListener | null>(null);
+  /** Le attese date prima che il microfono si apra (vedi `expect`). */
+  const pendingExpectRef = useRef<{ notes: number[] | null; token: string; upcoming: number[] } | null>(null);
   const [chordMatch, setChordMatch] = useState<ChordMatch | null>(null);
 
   const stop = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = 0;
+    if (loopRef.current) clearInterval(loopRef.current);
+    loopRef.current = null;
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
     setMicSession(false);
-    trackerRef.current.reset();
-    matcherRef.current = null;
+    listenerRef.current?.reset();
     setIsListening(false);
     setLiveNote(null);
     setLevel(0);
   }, []);
 
   const start = useCallback(async () => {
-    if (isListening) return;
+    // Un doppio tocco mentre il permesso è in attesa apriva due microfoni (e
+    // uno restava acceso anche dopo "spegni").
+    if (isListening || startingRef.current) return;
+    startingRef.current = true;
     // Prima di chiedere il microfono la sessione deve permettere di registrare,
     // altrimenti WebKit rifiuta la richiesta e sembra un permesso negato.
     setMicSession(true);
@@ -147,7 +147,6 @@ export function usePitchDetection() {
 
       const detector = PitchDetector.forFloat32Array(analyser.fftSize);
       const input = new Float32Array(detector.inputLength);
-      const tracker = trackerRef.current;
 
       // Lo spettro per i brani: finestra più lunga, per separare le note vicine.
       const specAnalyser = audioCtx.createAnalyser();
@@ -155,15 +154,20 @@ export function usePitchDetection() {
       specAnalyser.smoothingTimeConstant = 0;
       source.connect(specAnalyser);
       const spectrum = new Float32Array(specAnalyser.frequencyBinCount);
-      const matcher = new ChordMatcher(audioCtx.sampleRate, SPECTRUM_FFT);
-      matcherRef.current = matcher;
-      matcher.block(400, Date.now());
-      let matcherBroken = false;
+      // Un ascolto solo per tutta la vita dell'app: l'attesa in corso continua
+      // anche se il microfono si spegne e si riaccende.
+      const old = listenerRef.current;
+      const listener = old && old.sampleRate === audioCtx.sampleRate ? old : new MicListener(audioCtx.sampleRate, SPECTRUM_FFT);
+      if (old && listener !== old) listener.adopt(old);
+      listenerRef.current = listener;
+      // L'attesa data quando il microfono non era ancora mai stato aperto.
+      const pending = pendingExpectRef.current;
+      pendingExpectRef.current = null;
+      if (pending) listener.expect(pending.notes, pending.token, Date.now(), pending.upcoming);
+      listener.start(Date.now()); // il microfono che si apre fa un colpo
 
-      tracker.reset();
       setIsListening(true);
       setPermissionDenied(false);
-      tracker.block(400, Date.now()); // il microfono che si apre fa un colpo
 
       function tick() {
         analyser.getFloatTimeDomainData(input);
@@ -174,46 +178,28 @@ export function usePitchDetection() {
 
         const [pitch, clarity] = detector.findPitch(input, audioCtx.sampleRate);
         const now = Date.now();
+        specAnalyser.getFloatFrequencyData(spectrum);
         // I campioni grezzi servono a datare l'attacco dentro la finestra.
-        const out = tracker.feed(rms, pitch, clarity, now, input, audioCtx.sampleRate);
-
-        // Brani: le note attese sono arrivate? Qualunque cosa succeda qui,
-        // l'ascolto di una nota alla volta deve continuare: un errore spegne
-        // solo l'ascolto degli accordi.
-        if (!matcherBroken) {
-          try {
-            specAnalyser.getFloatFrequencyData(spectrum);
-            const attacks = matcher.feed(spectrum, now);
-            // Solo in sviluppo: gli attacchi sentiti, per le prove automatiche.
-            if (import.meta.env.DEV && attacks.length) {
-              const w = window as unknown as { __attacks?: { midi: number; at: number }[] };
-              (w.__attacks ??= []).push(...attacks.map(a => ({ midi: a.midi, at: a.at })));
-            }
-            const ex = expectRef.current;
-            if (ex) {
-              matcher.expect(ex.notes.filter(n => !ex.got.has(n)), ex.notes);
-              const got = matcher.matched(ex.notes, ex.since).filter(n => !ex.got.has(n));
-              if (got.length) {
-                got.forEach(n => ex.got.add(n));
-                if (ex.notes.every(n => ex.got.has(n))) { matcher.consume(ex.notes, now); ex.consumed = true; }
-                setChordMatch({ token: ex.user, midis: [...ex.got], id: ++matchIdRef.current });
-              }
-            } else {
-              matcher.expect([]);
-            }
-          } catch (err) {
-            matcherBroken = true;
-            console.error('Ascolto degli accordi disattivato:', err);
-          }
+        const out = listener.feed(rms, pitch, clarity, input, audioCtx.sampleRate, spectrum, now);
+        // Solo in sviluppo: cosa sente, per le prove automatiche (scripts/e2e).
+        if (import.meta.env.DEV) {
+          const w = window as unknown as { __attacks?: { midi: number; at: number }[]; __frames?: number[]; __mic?: { at: number; midi?: number; onset?: number; match?: string }[] };
+          (w.__frames ??= []).push(now);
+          if (out.attacks.length) (w.__attacks ??= []).push(...out.attacks.map(a => ({ midi: a.midi, at: a.at })));
+          if (out.confirmed) (w.__mic ??= []).push({ at: now, midi: out.confirmed.midi, onset: out.confirmed.onset });
+          if (out.match) (w.__mic ??= []).push({ at: now, match: `${out.match.token}:${out.match.midis.join('+')}` });
         }
+        if (out.match) setChordMatch(out.match);
 
         if (out.confirmed !== null) {
           const id = ++confirmIdRef.current;
           setConfirmedNote({
-            note: { ...midiToNote(out.confirmed), clarity: out.clarity },
+            note: { ...midiToNote(out.confirmed.midi), clarity: out.clarity },
             id,
             at: now,
-            onsetAt: out.onset ?? now,
+            onsetAt: out.confirmed.onset,
+            cloudy: out.confirmed.cloudy,
+            echo: out.confirmed.echo,
           });
         }
 
@@ -223,13 +209,15 @@ export function usePitchDetection() {
           setLiveNote(out.live === null ? null : { ...midiToNote(out.live), clarity: out.clarity });
         }
 
-        rafRef.current = requestAnimationFrame(tick);
       }
 
-      rafRef.current = requestAnimationFrame(tick);
+      if (loopRef.current) clearInterval(loopRef.current);
+      loopRef.current = setInterval(tick, ANALYSIS_MS);
     } catch {
       setMicSession(false); // niente registrazione: si torna a sola riproduzione
       setPermissionDenied(true);
+    } finally {
+      startingRef.current = false;
     }
   }, [isListening]);
 
@@ -239,8 +227,7 @@ export function usePitchDetection() {
    * silenzio, non basterà la coda che sta ancora risuonando.
    */
   const suppress = useCallback((ms = 1500) => {
-    trackerRef.current.suppress(ms, Date.now());
-    matcherRef.current?.block(ms, Date.now());
+    listenerRef.current?.suppress(ms, Date.now());
   }, []);
 
   /**
@@ -250,9 +237,7 @@ export function usePitchDetection() {
    * restava sordo per minuti — con la barra del volume che si muoveva.
    */
   const release = useCallback((tailMs = 1200) => {
-    const until = Date.now() + tailMs;
-    trackerRef.current.release(until);
-    matcherRef.current?.release(until);
+    listenerRef.current?.release(Date.now() + tailMs);
   }, []);
 
   /**
@@ -262,7 +247,7 @@ export function usePitchDetection() {
    */
   const external = useCallback((notes: { midi: number; delayMs: number }[]) => {
     const now = Date.now();
-    matcherRef.current?.external(notes.map(n => ({ midi: n.midi, at: now + n.delayMs })));
+    listenerRef.current?.external(notes.map(n => ({ midi: n.midi, at: now + n.delayMs })));
   }, []);
 
   /**
@@ -270,24 +255,20 @@ export function usePitchDetection() {
    * (due passi di fila con lo stesso accordo sono due attese diverse).
    * `null` quando non si aspetta niente.
    */
-  const expect = useCallback((notes: number[] | null, token = '') => {
-    const prev = expectRef.current;
-    if (!notes || notes.length === 0) {
-      expectRef.current = null;
-      return;
+  const expect = useCallback((notes: number[] | null, token = '', upcoming: number[] = []) => {
+    const listener = listenerRef.current;
+    if (listener) {
+      pendingExpectRef.current = null;
+      listener.expect(notes, token, Date.now(), upcoming);
+    } else {
+      // Il microfono non è ancora aperto: l'attesa parte con lui.
+      pendingExpectRef.current = { notes, token, upcoming };
     }
-    const key = `${token}|${notes.join(',')}`;
-    if (prev?.token === key) return;
-    // Il passo di prima è stato completato altrove (tasto sullo schermo, o
-    // l'ascolto di una nota alla volta): i suoi attacchi non devono valere
-    // per il passo nuovo, come se l'avesse preso il riconoscitore.
-    if (prev && !prev.consumed && prev.got.size > 0) matcherRef.current?.consume(prev.notes, Date.now());
-    expectRef.current = { token: key, user: token, notes, since: Date.now() - EXPECT_LOOKBACK_MS, got: new Set() };
   }, []);
 
   useEffect(
     () => () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (loopRef.current) clearInterval(loopRef.current);
       streamRef.current?.getTracks().forEach(t => t.stop());
       audioCtxRef.current?.close();
     },

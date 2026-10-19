@@ -1,7 +1,8 @@
 // La tastiera del Leggio: larga quanto lo schermo, si accende sui tasti da
 // premere (blu la destra, viola la sinistra), diventa verde quando li trovi e
 // rossa quando sbagli. Con il nome della nota scritto sul tasto acceso: chi
-// impara non deve cercarlo.
+// impara non deve cercarlo. E, se la partitura la dice, la diteggiatura: il
+// dito in un cerchio sopra il nome.
 
 import { memo, useMemo } from 'react';
 import { keyLayout, midiName } from './keys';
@@ -13,10 +14,24 @@ interface Props {
   lit: Map<number, string>;
   /** Nomi da scrivere sui tasti accesi (come sono scritti in partitura). */
   names?: Map<number, string>;
+  /** Il dito per i tasti accesi (1 = pollice … 5 = mignolo), se scritto. */
+  fingers?: Map<number, string>;
   onPress?: (midi: number) => void;
 }
 
-export const LeggioKeyboard = memo(function LeggioKeyboard({ from, to, lit, names, onPress }: Props) {
+/** Il dito, in un cerchio bianco: si legge su ogni colore. */
+function Finger({ value, color }: { value: string; color: string }) {
+  return (
+    <span
+      className="pointer-events-none flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-white px-1 text-[11px] font-black leading-none shadow sm:h-5 sm:min-w-5 sm:text-xs"
+      style={{ color: color.slice(0, 7) }}
+    >
+      {value}
+    </span>
+  );
+}
+
+export const LeggioKeyboard = memo(function LeggioKeyboard({ from, to, lit, names, fingers, onPress }: Props) {
   const layout = useMemo(() => keyLayout(from, to), [from, to]);
   const keys = [...layout.entries()].sort((a, b) => Number(a[1].black) - Number(b[1].black));
 
@@ -51,16 +66,26 @@ export const LeggioKeyboard = memo(function LeggioKeyboard({ from, to, lit, name
           >
             {color ? (
               k.black ? (
-                // Il tasto nero è stretto: il nome sta in una pillola appena sotto.
-                <span
-                  className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow sm:text-[11px]"
-                  style={{ background: color }}
-                >
-                  {names?.get(midi) ?? midiName(midi)}
-                </span>
+                <>
+                  {fingers?.get(midi) && (
+                    <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2">
+                      <Finger value={fingers.get(midi) ?? ''} color={color} />
+                    </span>
+                  )}
+                  {/* Il tasto nero è stretto: il nome sta in una pillola appena sotto. */}
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow sm:text-[11px]"
+                    style={{ background: color }}
+                  >
+                    {names?.get(midi) ?? midiName(midi)}
+                  </span>
+                </>
               ) : (
-                <span className="mb-1.5 text-[11px] font-black leading-none text-white drop-shadow sm:text-xs">
-                  {names?.get(midi) ?? midiName(midi)}
+                <span className="mb-1.5 flex flex-col items-center gap-1">
+                  {fingers?.get(midi) && <Finger value={fingers.get(midi) ?? ''} color={color} />}
+                  <span className="text-[11px] font-black leading-none text-white drop-shadow sm:text-xs">
+                    {names?.get(midi) ?? midiName(midi)}
+                  </span>
                 </span>
               )
             ) : (

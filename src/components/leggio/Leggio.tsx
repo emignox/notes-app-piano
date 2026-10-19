@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
-import { ChevronLeft, ChevronRight, ChevronsDown, FileMusic, Hand as HandIcon, Mic, MicOff, Minus, Pause, Play, Plus, Repeat, RotateCcw, Rows2, Target, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsDown, FileMusic, Hand as HandIcon, Mic, MicOff, Minus, Pause, Play, Plus, Repeat, RotateCcw, Rows2, Shapes, Target, X } from 'lucide-react';
 import type { LibraryEntry } from '../../data/library';
 import { LEVEL_LABEL, composerStyle } from '../../data/library';
 import { PORTRAIT } from '../../data/images';
@@ -29,17 +29,21 @@ import type { ProgressApi } from '../../hooks/useProgress';
 import type { ChordMatch, LiveNote } from '../../hooks/usePitchDetection';
 import { haptics } from '../../lib/haptics';
 import { t } from '../../i18n';
+import { analyseForme, familiesOf } from '../../lib/forme';
+import { monoAccepts, monoCounts } from '../../lib/micFollow';
 import { Cascade } from './Cascade';
+import { FormeCard, FormeLegend, FormeStrip } from './Forme';
+import { STRIP_PX, formeBoxes } from './formeText';
 import type { FallingNote } from './Cascade';
 import { LeggioKeyboard } from './LeggioKeyboard';
 import { BAD_COLOR, GOOD_COLOR, HAND_COLOR, midiName, midiTone, whiteKeysFor, windowFor } from './keys';
 
 interface MicApi {
   isListening: boolean;
-  expect: (notes: number[] | null, token?: string) => void;
+  expect: (notes: number[] | null, token?: string, upcoming?: number[]) => void;
   chordMatch: ChordMatch | null;
   /** L'ascolto di una nota alla volta: vale insieme a quello degli accordi. */
-  confirmedNote: { note: LiveNote; id: number; onsetAt?: number } | null;
+  confirmedNote: { note: LiveNote; id: number; onsetAt?: number; cloudy?: boolean; echo?: boolean } | null;
   liveNote: LiveNote | null;
   level: number;
   suppress: (ms?: number) => void;
@@ -82,6 +86,8 @@ interface TNote {
   head: SVGGElement | null;
   /** Il nome come è scritto: Si♭ e non La♯, se la partitura dice si bemolle. */
   name: string;
+  /** Il dito scritto sulla nota ("3", "4-3"), se la partitura lo dice. */
+  finger?: string;
 }
 
 interface TStep {
@@ -99,6 +105,7 @@ interface OsmdNote {
   Length: { RealValue: number };
   NoteTie?: { StartNote: OsmdNote; Notes: OsmdNote[] } | null;
   ParentStaff?: { idInMusicSheet: number };
+  Fingering?: { value?: string } | null;
 }
 interface OsmdGNote {
   sourceNote?: OsmdNote;
@@ -119,6 +126,31 @@ function spelled(n: OsmdNote, midi: number): string {
 const MUTED = '#94a3b8';
 
 const allows = (hand: HandSel, staff: number) => hand === 'both' || (hand === 'right' ? staff === 0 : staff !== 0);
+
+/** Un passo su cui fermarsi: ha almeno una nota nuova (non solo legature o abbellimenti). */
+const hasNotes = (st: TStep | undefined) => !!st?.notes.some(n => !n.cont && !n.grace);
+
+/**
+ * Le note che al passo `i` stanno ancora suonando, partite prima: quelle che
+ * le mani tengono premute. Chi si ferma su un passo per impararlo deve vedere
+ * TUTTA la posizione delle mani, non solo i tasti appena premuti.
+ */
+function heldAt(steps: TStep[], i: number): TNote[] {
+  const st = steps[i];
+  if (!st) return [];
+  const out = new Map<number, TNote>();
+  for (const n of st.notes) if (n.cont) out.set(n.midi, n);
+  for (let j = i - 1; j >= 0 && st.beat - steps[j].beat <= 16; j--) {
+    for (const n of steps[j].notes) {
+      if (n.cont || n.grace || out.has(n.midi)) continue;
+      if (n.start + n.dur > st.beat + 1e-3 && !st.notes.some(x => !x.cont && x.midi === n.midi)) out.set(n.midi, n);
+    }
+  }
+  return [...out.values()];
+}
+
+/** Lo stesso colore, più chiaro: le note tenute. */
+const faded = (color: string) => `${color}70`;
 
 /** Scorre tutta la partitura col cursore e ne ricava la sequenza delle note. */
 function extract(osmd: OpenSheetMusicDisplay): TStep[] {
@@ -149,6 +181,7 @@ function extract(osmd: OpenSheetMusicDisplay): TStep[] {
         cont,
         svg: g.getSVGGElement?.() ?? null,
         head: null,
+        finger: n.Fingering?.value?.trim() || undefined,
       });
     }
     // Le teste dell'accordo, dal basso in alto, vanno alle note dalla più grave.
@@ -220,6 +253,10 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const [result, setResult] = useState<{ pct: number; secs: number; notes: number } | null>(null);
   const [win, setWin] = useState<[number, number]>([48, 72]);
   const [names, setNames] = useState(entry.level <= 2);
+  /** Vista "Forme": accordi, arpeggi e schemi riconosciuti sopra e sotto il rigo. */
+  const [forme, setForme] = useState(false);
+  const [formaOpen, setFormaOpen] = useState<number | null>(null);
+  const [formeBox, setFormeBox] = useState<Map<number, { x: number; w: number }>>(new Map());
   /** Dove stanno i righi (in px dentro lo spartito), per le etichette delle mani. */
   const [staffTops, setStaffTops] = useState<{ top: number; height: number }[]>([]);
 
@@ -232,6 +269,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const nameLayer = useRef<HTMLDivElement>(null);
   /** Altezza dello spartito a grandezza 1: cresce in proporzione allo zoom. */
   const h1 = useRef(0);
+  /** Lo spazio che le strisce delle forme tolgono allo spartito (0 se la vista è spenta). */
+  const stripPx = useRef(0);
   const scrollTarget = useRef(0);
   const scrollTargetY = useRef<number | null>(null);
   const play = useRef({ start: 0, t0: 0, spb: 0.5 });
@@ -258,7 +297,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       osmd.render();
       h1.current = host.current?.querySelector('svg')?.getBoundingClientRect().height ?? 250;
     }
-    const byHeight = (box.clientHeight * 0.94) / Math.max(100, h1.current);
+    const byHeight = ((box.clientHeight - stripPx.current) * 0.94) / Math.max(100, h1.current);
     const byWidth = window.innerWidth / 260;
     osmd.zoom = Math.max(0.6, Math.min(2.6, byHeight, byWidth));
     osmd.render();
@@ -345,6 +384,31 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const changeView = (v: View) => {
     setView(v);
     if (v !== 'cascata') requestAnimationFrame(() => requestAnimationFrame(fit));
+  };
+
+  // ── Forme ─────────────────────────────────────────────────────────────────
+  const toggleForme = () => {
+    const next = !forme;
+    stripPx.current = next ? STRIP_PX * 2 : 0;
+    setForme(next);
+    setFormaOpen(null);
+    // Le strisce tolgono spazio al rigo: si ridisegna alla grandezza giusta.
+    requestAnimationFrame(() => requestAnimationFrame(fit));
+  };
+  const shapes = useMemo(() => (forme ? analyseForme(steps) : []), [forme, steps]);
+  const families = useMemo(() => familiesOf(shapes), [shapes]);
+  // Dove stanno sul rigo: dopo ogni disegno gli elementi SVG sono nuovi.
+  useEffect(() => {
+    const origin = spotLayer.current?.getBoundingClientRect();
+    setFormeBox(forme && origin && !loading ? formeBoxes(shapes, steps, origin) : new Map());
+    if (import.meta.env.DEV) (window as unknown as { __forme?: unknown }).__forme = shapes;
+  }, [forme, shapes, steps, loading]);
+  /** Dalla legenda: alla prima forma di quel tipo (da fermi si porta lì anche il cursore). */
+  const goForma = (f: { id: number; from: number }) => {
+    const x = formeBox.get(f.id)?.x;
+    setFormaOpen(f.id);
+    if (mode === 'idle') setIdx(f.from);
+    else if (x !== undefined && scroller.current) scrollTarget.current = Math.max(0, x - scroller.current.clientWidth * 0.3);
   };
 
   // ── Battute e anelli di ripetizione ───────────────────────────────────────
@@ -541,6 +605,10 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
    * suoni il Leggio parte e ti segue, senza bisogno di premere Esercita.
    */
   const waitingAt = mode === 'practice' ? idx : mode === 'idle' && mic.isListening && !loading ? nextRequired(idx) : -1;
+  // Solo in sviluppo: dove sta il Leggio, per le prove automatiche (scripts/e2e).
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __leggio?: unknown }).__leggio = { idx, mode, waitingAt, steps: steps.length };
+  });
   /** Da quando si aspetta quel passo (le note sentite prima non valgono). */
   const waitSince = useRef(0);
   useEffect(() => { waitSince.current = Date.now(); }, [waitingAt, mode]);
@@ -611,8 +679,13 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   // all'esercizio a metà accordo, e il resto dell'accordo deve valere.
   const waitToken = `${waitingAt}-${lap}-${runId}`;
   useEffect(() => {
-    expect(waitingAt >= 0 && mic.isListening ? required(waitingAt) : null, waitToken);
-  }, [expect, waitingAt, waitToken, mic.isListening, required]);
+    // Con le note dei due passi dopo: in un passaggio veloce sono già nella
+    // finestra dell'ascolto, e non sono rumore.
+    const after = waitingAt >= 0 ? nextRequired(waitingAt + 1) : -1;
+    const after2 = after >= 0 ? nextRequired(after + 1) : -1;
+    const upcoming = [...(after >= 0 ? required(after) : []), ...(after2 >= 0 ? required(after2) : [])];
+    expect(waitingAt >= 0 && mic.isListening ? required(waitingAt) : null, waitToken, upcoming);
+  }, [expect, waitingAt, waitToken, mic.isListening, required, nextRequired]);
   useEffect(() => () => expect(null), [expect]);
 
   useEffect(() => {
@@ -632,10 +705,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     const c = mic.confirmedNote;
     if (!mic.isListening || !c || c.id <= monoBase.current) return;
     monoBase.current = c.id;
-    if (waitingAt < 0 || (c.onsetAt ?? Date.now()) < waitSince.current - 30) return;
-    const heard = liveMidi(c.note);
-    const need = required(waitingAt);
-    accept(need.includes(heard) ? [heard] : need.filter(m => Math.abs(m - heard) === 12).slice(0, 1));
+    if (waitingAt < 0 || !monoCounts({ onset: c.onsetAt ?? Date.now(), cloudy: c.cloudy, echo: c.echo }, waitSince.current)) return;
+    accept(monoAccepts(required(waitingAt), liveMidi(c.note)));
   }, [mic.confirmedNote]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Note accese sul rigo e scorrimento ────────────────────────────────────
@@ -654,8 +725,19 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         if (!need.includes(n.midi)) return null;
         return found.includes(n.midi) ? GOOD_COLOR : HAND_COLOR[n.staff] ?? HAND_COLOR[0];
       }
+      // Da fermi si studia il passo: le due mani, sempre.
+      if (mode !== 'listen') return HAND_COLOR[n.staff] ?? HAND_COLOR[0];
       return allows(hand, n.staff) ? HAND_COLOR[n.staff] ?? HAND_COLOR[0] : null;
     };
+    // Da fermi, anche le note che le mani tengono ancora (più chiare).
+    if (mode === 'idle' || mode === 'done') {
+      for (const n of heldAt(steps, idx)) {
+        const el = n.head ?? n.svg;
+        if (!el || step.notes.includes(n)) continue;
+        paint(el, faded(HAND_COLOR[n.staff] ?? HAND_COLOR[0]));
+        lit.current.push(el);
+      }
+    }
     // Prima il gruppo intero (gambo, cediglie) e poi ogni testa col suo colore.
     for (const n of step.notes) {
       if (!n.svg) continue;
@@ -736,7 +818,11 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   // ── Tastiera: quale porzione mostrare ─────────────────────────────────────
   useEffect(() => {
     if (!steps.length) return;
-    const ahead = steps.slice(idx, idx + (mode === 'listen' ? 24 : 10)).flatMap(s => s.notes.filter(n => allows(hand, n.staff)).map(n => n.midi));
+    // Da fermi: il passo così com'è, con le due mani e le note tenute.
+    const still = mode === 'idle' || mode === 'done';
+    const ahead = still
+      ? [...(steps[idx]?.notes ?? []), ...heldAt(steps, idx)].map(n => n.midi)
+      : steps.slice(idx, idx + (mode === 'listen' ? 24 : 10)).flatMap(s => s.notes.filter(n => allows(hand, n.staff)).map(n => n.midi));
     if (!ahead.length) return;
     const lo = Math.min(...ahead);
     const hi = Math.max(...ahead);
@@ -744,8 +830,16 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     setWin(cur => (lo >= cur[0] && hi <= cur[1] ? cur : windowFor(lo - 2, hi + 2, whiteKeysFor(width))));
   }, [idx, steps, hand, mode]);
 
+  /** Le note tenute dal passo prima, da fermi (vedi `heldAt`). */
+  const held = useMemo(() => (mode === 'idle' || mode === 'done' ? heldAt(steps, idx) : []), [steps, idx, mode]);
   /** I nomi scritti delle note del passo, per la tastiera e per "Suona". */
-  const stepNames = useMemo(() => new Map((steps[idx]?.notes ?? []).map(n => [n.midi, n.name])), [steps, idx]);
+  const stepNames = useMemo(() => new Map([...held, ...(steps[idx]?.notes ?? [])].map(n => [n.midi, n.name])), [steps, idx, held]);
+  /** Le dita scritte in partitura, per la tastiera. */
+  const stepFingers = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const n of [...held, ...(steps[idx]?.notes ?? [])]) if (n.finger) m.set(n.midi, n.finger);
+    return m;
+  }, [steps, idx, held]);
 
   const litKeys = useMemo(() => {
     const m = new Map<number, string>();
@@ -759,11 +853,12 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     } else if (mode === 'listen') {
       for (const n of step.notes) if (!n.cont && allows(hand, n.staff)) m.set(n.midi, HAND_COLOR[n.staff] ?? HAND_COLOR[0]);
     } else {
+      for (const n of held) m.set(n.midi, faded(HAND_COLOR[n.staff] ?? HAND_COLOR[0]));
       for (const n of step.notes) if (!n.cont) m.set(n.midi, HAND_COLOR[n.staff] ?? HAND_COLOR[0]);
     }
     if (badKey !== null) m.set(badKey, BAD_COLOR);
     return m;
-  }, [steps, idx, mode, required, found, badKey, hand]);
+  }, [steps, idx, mode, required, found, badKey, hand, held]);
 
   // ── Cascata ───────────────────────────────────────────────────────────────
   const falling = useMemo<FallingNote[]>(() => steps.flatMap(s => s.notes.filter(n => !n.cont).map(n => ({ midi: n.midi, start: n.start, dur: Math.max(0.12, n.dur), staff: n.staff, name: n.name }))), [steps]);
@@ -803,6 +898,32 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     return best;
   };
 
+  /**
+   * Il passo sotto il dito: la nota (o l'accordo, di una mano o dell'altra)
+   * più vicina in orizzontale, fra le battute attorno a quella toccata.
+   */
+  const stepAt = (clientX: number, mi: number) => {
+    const layer = spotLayer.current;
+    if (!layer) return -1;
+    const x0 = layer.getBoundingClientRect().left;
+    let best = -1;
+    let dist = Infinity;
+    steps.forEach((st, i) => {
+      if (Math.abs(st.measure - mi) > 1 || !hasNotes(st)) return;
+      // Con una zona, le note della zona: un tocco vicino al suo bordo non
+      // deve finire sulla nota della battuta accanto (e far sparire la zona).
+      if (zone && mi >= zone.from && mi <= zone.to && (st.measure < zone.from || st.measure > zone.to)) return;
+      for (const n of st.notes) {
+        const el = n.head ?? n.svg;
+        if (!el || n.cont) continue;
+        const r = el.getBoundingClientRect();
+        const d = Math.abs(r.left + r.width / 2 - x0 - (clientX - x0));
+        if (d < dist) { dist = d; best = i; }
+      }
+    });
+    return best;
+  };
+
   const onScoreTap = (e: React.MouseEvent) => {
     if (loading) return;
     const mi = measureAt(e.clientX);
@@ -824,8 +945,12 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
       if (first >= 0) setIdx(first);
       return;
     }
-    const first = steps.findIndex(s => s.measure >= mi);
+    // Si va alla nota toccata (o all'accordo), non all'inizio della battuta:
+    // fermi lì si vedono le due mani, le dita e i tasti.
+    const at = stepAt(e.clientX, mi);
+    const first = at >= 0 ? at : steps.findIndex(s => s.measure >= mi);
     if (first < 0) return;
+    // Dentro o fuori dalla zona si decide sulla battuta toccata, come prima.
     if (zone && (mi < zone.from || mi > zone.to)) {
       // Fuori dalla zona: si torna al brano intero, da lì.
       stopAll();
@@ -836,12 +961,47 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     }
     if (mode === 'listen') void listen(first);
     else if (mode === 'practice') void startPractice(first);
-    else {
-      stopAll();
-      setResult(null);
-      setIdx(first);
-    }
+    else goTo(first);
   };
+
+  /** Fermi su un passo: niente suona, il microfono aspetta proprio quello. */
+  const goTo = (i: number) => {
+    stopAll();
+    setResult(null);
+    setMode('idle');
+    setIdx(i);
+  };
+
+  /**
+   * Un passo avanti o indietro. Esercitandosi, fra i passi della tua mano
+   * (l'esercizio continua da lì); altrimenti fra tutti quelli con una nota.
+   * Con una zona, si resta dentro la zona.
+   */
+  const stepBy = (dir: 1 | -1) => {
+    if (loading || !steps.length) return;
+    const [lo, hi] = range;
+    const ok = (i: number) => (mode === 'practice' ? required(i).length > 0 : hasNotes(steps[i]));
+    let i = Math.min(Math.max(idx, lo), hi - 1) + dir;
+    while (i >= lo && i < hi && !ok(i)) i += dir;
+    if (i < lo || i >= hi) return;
+    if (mode === 'practice') {
+      setFound([]);
+      practice.current.stepError = false;
+      setIdx(i);
+    } else goTo(i);
+  };
+  const stepByRef = useRef(stepBy);
+  useEffect(() => { stepByRef.current = stepBy; });
+  // Con la tastiera del computer (o dell'iPad): frecce sinistra e destra.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); stepByRef.current(1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); stepByRef.current(-1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   /** La zona da colorare sul rigo: quella scelta, o quella che si sta scegliendo. */
   const band = picking?.from != null ? { from: picking.from, to: picking.from } : picking ? null : zone;
@@ -927,7 +1087,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         >
           {/* min-h-full e non h-full: se il rigo è più alto dello spazio (telefono in
               orizzontale) si scorre anche in verticale invece di tagliarlo. */}
-          <div className="flex min-h-full w-max items-center">
+          <div className="flex min-h-full w-max flex-col justify-center">
+            {forme && <FormeStrip shapes={shapes} staff={0} boxes={formeBox} openId={formaOpen} onOpen={id => setFormaOpen(o => (o === id ? null : id))} />}
             <div className={`relative flex flex-none ${picking ? 'cursor-crosshair' : 'cursor-pointer'}`} onClick={onScoreTap}>
               {bandBox && band && (
                 <div
@@ -955,6 +1116,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
               <div ref={host} className="relative flex-none pl-[30vw] pr-[60vw]" />
               <div ref={nameLayer} className="pointer-events-none absolute inset-0" />
             </div>
+            {forme && <FormeStrip shapes={shapes} staff={1} boxes={formeBox} openId={formaOpen} onOpen={id => setFormaOpen(o => (o === id ? null : id))} />}
           </div>
         </div>
         {entry.credit && (
@@ -987,6 +1149,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             </div>
           </div>
         )}
+        {forme && formaOpen !== null && shapes[formaOpen] && <FormeCard forma={shapes[formaOpen]} top={shapes[formaOpen].staff === 1} onClose={() => setFormaOpen(null)} />}
         {loading && (
           <div className="absolute inset-0 grid place-items-center bg-canvas/80 text-sm font-bold text-ink2">
             {t('Preparo lo spartito…')}
@@ -1037,6 +1200,8 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
         )}
       </div>
 
+      {forme && !loading && <FormeLegend families={families} onGo={goForma} />}
+
       {/* Comandi: due righe sul telefono, una sola su iPad. */}
       <div className="flex flex-col gap-2 border-t border-line/70 bg-surface px-3 py-2 sm:flex-row sm:items-center">
         <div className="flex flex-none items-center gap-2">
@@ -1075,6 +1240,15 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
           </div>
         </div>
         <div className="thin-scroll flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
+          {/* Una nota (o un accordo) alla volta: per fermarsi e guardare dita e tasti. */}
+          <div className="flex flex-none items-center gap-0.5 rounded-xl border border-line bg-surface2 px-0.5">
+            <button type="button" disabled={loading} onClick={() => stepBy(-1)} className="rounded-lg p-1.5 text-ink2 active:scale-90 disabled:opacity-40" aria-label={t('Nota precedente')}>
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button type="button" disabled={loading} onClick={() => stepBy(1)} className="rounded-lg p-1.5 text-ink2 active:scale-90 disabled:opacity-40" aria-label={t('Nota successiva')}>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
           <div className="flex flex-none items-center gap-0.5 rounded-xl border border-line bg-surface2 px-0.5 text-xs font-bold">
             <button type="button" onClick={() => setRate(r => Math.max(0.25, Math.round((r - 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label={t('Più lento')}>
               <Minus className="h-3.5 w-3.5" />
@@ -1091,6 +1265,14 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             className={`flex-none rounded-full border px-3 py-1 text-xs font-black ${names ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink3'}`}
           >
             Do Re Mi
+          </button>
+          <button
+            type="button"
+            onClick={toggleForme}
+            aria-pressed={forme}
+            className={`flex flex-none items-center gap-1 rounded-full border px-3 py-1 text-xs font-black ${forme ? 'border-brand bg-brand/15 text-brand' : 'border-line text-ink3'}`}
+          >
+            <Shapes className="h-3.5 w-3.5" /> {t('Forme')}
           </button>
           <span className="mx-0.5 h-5 w-px flex-none bg-line" />
           <button
@@ -1142,7 +1324,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             <ChevronLeft className="mx-auto h-4 w-4" />
           </button>
           <div className="min-w-0 flex-1">
-            <LeggioKeyboard from={win[0]} to={win[1]} lit={litKeys} names={stepNames} onPress={pressKey} />
+            <LeggioKeyboard from={win[0]} to={win[1]} lit={litKeys} names={stepNames} fingers={stepFingers} onPress={pressKey} />
           </div>
           <button type="button" onClick={() => setWin(([a, b]) => windowFor(a + 12, b + 12, whiteKeysFor(keysBox.current?.clientWidth ?? 390)))} className="w-6 flex-none text-slate-500" aria-label={t('Tastiera più in alto')}>
             <ChevronRight className="mx-auto h-4 w-4" />

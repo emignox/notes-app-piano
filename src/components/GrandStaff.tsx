@@ -66,6 +66,8 @@ interface GrandStaffProps {
    * riquadro che scorre. Si segue la musica guardando le note, non un cursore.
    */
   listening?: boolean;
+  /** Un tocco su una nota (o un accordo): il passo toccato. */
+  onStepTap?: (index: number) => void;
 }
 
 // ── Colori ──────────────────────────────────────────────────────────────────
@@ -520,6 +522,7 @@ export function GrandStaff({
   fingering = true,
   range,
   listening = false,
+  onStepTap,
 }: GrandStaffProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1057,6 +1060,25 @@ export function GrandStaff({
     }
   }, [activeIndex, width, zoom]);
 
+  /**
+   * Il passo sotto il dito: nel sistema toccato, la nota (o l'accordo) più
+   * vicina in orizzontale. Le coordinate dello spartito non sono scalate.
+   */
+  const onTap = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onStepTap) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - r.left) / zoom;
+    const y = (e.clientY - r.top) / zoom;
+    let best = -1;
+    let dist = Infinity;
+    geomRef.current.forEach((g, i) => {
+      if (!g || y < trebleTop(g.sys) - 40 || y > bassBottom(g.sys) + 40) return;
+      const d = Math.abs(g.x - x);
+      if (d < dist) { dist = d; best = i; }
+    });
+    if (best >= 0) onStepTap(best);
+  };
+
   // Un sistema alto (note molto acute o molto gravi) non deve uscire dal riquadro.
   const viewH = Math.min(height * zoom, Math.min(VIEWPORT_MAX, Math.max(VIEWPORT_H, Math.round(tallest * zoom * 1.35))));
 
@@ -1072,8 +1094,9 @@ export function GrandStaff({
       >
         <div className="relative" style={{ width: contentW ? contentW * zoom : '100%', height: height * zoom }}>
           <div
-            className="absolute left-0 top-0 origin-top-left"
+            className={`absolute left-0 top-0 origin-top-left ${onStepTap ? 'cursor-pointer' : ''}`}
             style={{ width: contentW || '100%', height, transform: zoom !== 1 ? `scale(${zoom})` : undefined }}
+            onClick={onTap}
           >
             <div
               ref={cursorRef}

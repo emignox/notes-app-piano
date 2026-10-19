@@ -515,4 +515,6 @@ export default {
   "il racconto del primo tema, senza fretta": "the telling of the first theme, without hurrying",
   "il secondo tema cantato": "the second theme sung out",
   "la coda a mani separate, lentissima": "the coda hands separately, very slowly",
+  'Nota precedente': 'Previous note',
+  'Nota successiva': 'Next note',
 } as Record<string, string>;
