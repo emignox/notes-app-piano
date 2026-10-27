@@ -417,7 +417,8 @@ export function useProgress() {
       apply(prev => {
         const old = prev.pieceLoops[key] ?? { perfectRuns: 0, bpm };
         const perfectRuns = perfect ? old.perfectRuns + 1 : 0;
-        nextBpm = perfectRuns >= 2 ? bpm + 4 : bpm;
+        // Il passo cresce col tempo: +4 a 70 come sempre, ma +1 a 12 (non +33%).
+        nextBpm = perfectRuns >= 2 ? bpm + Math.max(1, Math.round(bpm * 0.06)) : bpm;
         return {
           ...prev,
           pieceLoops: {

@@ -694,7 +694,7 @@ function PieceChallenge({
           <span className="text-[11px] tabular-nums text-ink3">{bpm}</span>
           <input
             type="range"
-            min={30}
+            min={10}
             max={Math.max(140, piece.bpm + 20)}
             step={2}
             value={bpm}
@@ -712,7 +712,7 @@ function PieceChallenge({
         onClick={() => setSmartLoop(v => !v)}
         className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs ${smartLoop ? 'border-brand/40 bg-brand/10' : 'border-line bg-surface2'}`}
       >
-        <span><b className="text-ink">{t('Loop intelligente')}</b><span className="ml-1 text-ink3">{t('2 giri puliti → +4 BPM')}</span></span>
+        <span><b className="text-ink">{t('Loop intelligente')}</b><span className="ml-1 text-ink3">{t('2 giri puliti → +{n} BPM', { n: Math.max(1, Math.round(bpm * 0.06)) })}</span></span>
         <span className={`h-2.5 w-2.5 rounded-full ${smartLoop ? 'bg-brand' : 'bg-ink3'}`} />
       </button>
 

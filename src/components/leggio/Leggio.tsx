@@ -125,6 +125,43 @@ function spelled(n: OsmdNote, midi: number): string {
 /** Le note che non tocca a te: grigie, ma sempre leggibili. */
 const MUTED = '#94a3b8';
 
+/**
+ * Il tempo più lento che si può scegliere (battiti al minuto). Per studiare
+ * un passaggio in loop serve poter scendere molto: con il minimo al 25% del
+ * tempo del brano, un valzer a 110 non andava sotto i 27.
+ */
+const MIN_BPM = 10;
+
+/** Un passo del − / +: fine dove ogni battito conta, più largo sopra. */
+function tempoStep(bpm: number, dir: 1 | -1): number {
+  const step = bpm < 30 || (dir < 0 && bpm <= 30) ? 1 : bpm < 60 || (dir < 0 && bpm <= 60) ? 2 : 5;
+  return bpm + dir * step;
+}
+
+/** Il tempo scelto per un brano, ricordato su questo dispositivo (per studiarlo in loop allo stesso tempo). */
+const savedBpm = (id: string): number | null => {
+  try {
+    const v = Number(localStorage.getItem(`leggio-bpm:${id}`));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Il tempo di partenza: quello ricordato per il brano, se sta nei limiti, o quello consigliato. */
+const startRateFor = (id: string, bpm: number, fallback: number): number => {
+  const b = savedBpm(id);
+  return b !== null && b >= MIN_BPM && b <= Math.round(bpm * 1.25) ? b / bpm : fallback;
+};
+
+const saveBpm = (id: string, bpm: number) => {
+  try {
+    localStorage.setItem(`leggio-bpm:${id}`, String(bpm));
+  } catch {
+    /* resta per questa volta */
+  }
+};
+
 const allows = (hand: HandSel, staff: number) => hand === 'both' || (hand === 'right' ? staff === 0 : staff !== 0);
 
 /** Un passo su cui fermarsi: ha almeno una nota nuova (non solo legature o abbellimenti). */
@@ -222,7 +259,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const tall = typeof window !== 'undefined' && window.innerHeight > window.innerWidth * 1.15;
   const [view, setView] = useState<View>(tall ? 'entrambi' : 'spartito');
   const [hand, setHand] = useState<HandSel>('both');
-  const [rate, setRate] = useState(entry.startRate);
+  const [rate, setRate] = useState(() => startRateFor(entry.id, entry.bpm, entry.startRate));
   const [mode, setMode] = useState<Mode>('idle');
   const [steps, setSteps] = useState<TStep[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,7 +287,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   /** Cambia a ogni "Esercita": l'attesa di un passo già visto riparte da capo. */
   const [runId, setRunId] = useState(0);
   const [badKey, setBadKey] = useState<number | null>(null);
-  const [result, setResult] = useState<{ pct: number; secs: number; notes: number } | null>(null);
+  const [result, setResult] = useState<{ pct: number; secs: number; notes: number; bpm: number } | null>(null);
   const [win, setWin] = useState<[number, number]>([48, 72]);
   const [names, setNames] = useState(entry.level <= 2);
   /** Vista "Forme": accordi, arpeggi e schemi riconosciuti sopra e sotto il rigo. */
@@ -278,6 +315,32 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
   const practice = useRef({ errors: 0, total: 0, stepError: false, startedAt: 0 });
   const micBase = useRef(mic.chordMatch?.id ?? 0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const maxBpm = Math.round(entry.bpm * 1.25);
+  /** Il tempo in battiti al minuto, come si legge sul metronomo. */
+  const bpmNow = Math.round(entry.bpm * rate);
+  const changeTempo = (dir: 1 | -1) => {
+    setRate(r => {
+      const next = Math.max(MIN_BPM, Math.min(maxBpm, tempoStep(Math.round(entry.bpm * r), dir)));
+      saveBpm(entry.id, next);
+      return next / entry.bpm;
+    });
+  };
+  // Tenendo premuto − o + il tempo scorre da solo: da 72 a 10 erano 36 tocchi.
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopHold = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
+  const startHold = (dir: 1 | -1) => {
+    stopHold();
+    changeTempo(dir);
+    const repeat = (delay: number) => {
+      holdTimer.current = setTimeout(() => { changeTempo(dir); repeat(110); }, delay);
+    };
+    repeat(450);
+  };
+  useEffect(() => stopHold, []);
 
   const spb = 60 / (entry.bpm * rate);
 
@@ -590,14 +653,14 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
     if (next < 0) {
       const pct = p.total ? Math.round(((p.total - p.errors) / p.total) * 100) : 0;
       const secs = Math.round((performance.now() - p.startedAt) / 1000);
-      setResult({ pct, secs, notes: p.total });
+      setResult({ pct, secs, notes: p.total, bpm: Math.round(entry.bpm * rate) });
       setMode('done');
       if (pct >= 90) audio.playSuccess();
       progress.recordMelody(`leggio:${entry.id}`, pct);
       return;
     }
     setIdx(next);
-  }, [idx, nextRequired, accompany, range, audio, progress, entry.id, zone, lap, setFound]);
+  }, [idx, nextRequired, accompany, range, audio, progress, entry.id, entry.bpm, rate, zone, lap, setFound]);
 
   /**
    * Dove il microfono aspetta le note: esercitandosi, il passo corrente; da
@@ -1179,7 +1242,7 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             <div className="w-full max-w-sm rounded-3xl border border-line bg-surface p-5 text-center shadow-2xl">
               <div className="text-5xl">{result.pct >= 95 ? '🏆' : result.pct >= 80 ? '🎹' : '💪'}</div>
               <p className="mt-2 text-2xl font-black">{t('{pct}% giuste', { pct: result.pct })}</p>
-              <p className="mt-1 text-sm text-ink2">{t('{notes} passaggi in {secs}s · tempo {rate}%', { notes: result.notes, secs: result.secs, rate: Math.round(rate * 100) })}</p>
+              <p className="mt-1 text-sm text-ink2">{t('{notes} passaggi in {secs}s · {bpm} bpm', { notes: result.notes, secs: result.secs, bpm: result.bpm })}</p>
               <p className="mt-2 text-xs text-ink3">
                 {result.pct >= 95 ? t('Pulito. Alza il tempo del 10% e rifallo.') : t('Rifallo allo stesso tempo: la precisione viene prima della velocità.')}
               </p>
@@ -1250,11 +1313,38 @@ export function Leggio({ entry, audio, mic, progress, onClose, onToggleMic, onGu
             </button>
           </div>
           <div className="flex flex-none items-center gap-0.5 rounded-xl border border-line bg-surface2 px-0.5 text-xs font-bold">
-            <button type="button" onClick={() => setRate(r => Math.max(0.25, Math.round((r - 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label={t('Più lento')}>
+            <button
+              type="button"
+              disabled={bpmNow <= MIN_BPM}
+              onPointerDown={e => { e.preventDefault(); startHold(-1); }}
+              onPointerUp={stopHold}
+              onPointerLeave={stopHold}
+              onPointerCancel={stopHold}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); changeTempo(-1); } }}
+              className="rounded-lg p-1.5 active:scale-90 disabled:opacity-40"
+              style={{ touchAction: 'none' }}
+              aria-label={t('Più lento')}
+            >
               <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="w-10 text-center tabular-nums" title={t('Velocità')}>{Math.round(rate * 100)}%</span>
-            <button type="button" onClick={() => setRate(r => Math.min(1.25, Math.round((r + 0.05) * 100) / 100))} className="rounded-lg p-1.5 active:scale-90" aria-label={t('Più veloce')}>
+            <span
+              className="min-w-[3.25rem] text-center tabular-nums leading-none"
+              title={t('Velocità: {bpm} battiti al minuto ({pct}% del tempo del brano)', { bpm: bpmNow, pct: Math.round(rate * 100) })}
+            >
+              {bpmNow}<span className="ml-0.5 text-[10px] font-semibold text-ink3">bpm</span>
+            </span>
+            <button
+              type="button"
+              disabled={bpmNow >= maxBpm}
+              onPointerDown={e => { e.preventDefault(); startHold(1); }}
+              onPointerUp={stopHold}
+              onPointerLeave={stopHold}
+              onPointerCancel={stopHold}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); changeTempo(1); } }}
+              className="rounded-lg p-1.5 active:scale-90 disabled:opacity-40"
+              style={{ touchAction: 'none' }}
+              aria-label={t('Più veloce')}
+            >
               <Plus className="h-3.5 w-3.5" />
             </button>
           </div>

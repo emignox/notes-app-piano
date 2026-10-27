@@ -57,7 +57,7 @@ export default {
   "tutto il brano": "tout le morceau",
   "Tempo": "Tempo",
   "Loop intelligente": "Boucle intelligente",
-  "2 giri puliti → +4 BPM": "2 tours propres → +4 BPM",
+  "2 giri puliti → +{n} BPM": "2 tours propres → +{n} BPM",
   "Nota legata: tieni premuto, non ribattere": "Note liée : maintiens la touche, ne la rejoue pas",
   "Questa mano tace: pausa": "Cette main se tait : silence",
   "Una nota": "Une note",
@@ -87,7 +87,6 @@ export default {
   "🎤 Suona per cominciare:": "🎤 Joue pour commencer :",
   "Suona:": "Joue :",
   "{pct}% giuste": "{pct} % justes",
-  "{notes} passaggi in {secs}s · tempo {rate}%": "{notes} passages en {secs} s · tempo {rate} %",
   "Pulito. Alza il tempo del 10% e rifallo.": "Propre. Monte le tempo de 10 % et refais-le.",
   "Rifallo allo stesso tempo: la precisione viene prima della velocità.": "Refais-le au même tempo : la précision passe avant la vitesse.",
   "Più veloce": "Plus vite",
@@ -517,4 +516,6 @@ export default {
   "la coda a mani separate, lentissima": "la coda mains séparées, très lentement",
   'Nota precedente': 'Note précédente',
   'Nota successiva': 'Note suivante',
+  'Velocità: {bpm} battiti al minuto ({pct}% del tempo del brano)': 'Vitesse\xa0: {bpm} battements par minute ({pct}\xa0% du tempo du morceau)',
+  '{notes} passaggi in {secs}s · {bpm} bpm': '{notes} passages en {secs} s · {bpm} bpm',
 } as Record<string, string>;

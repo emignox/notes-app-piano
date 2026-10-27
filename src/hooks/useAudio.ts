@@ -465,7 +465,8 @@ export function useAudio(volume = 0.8) {
   const startMetronome = useCallback(
     (bpm: number) => {
       stopMetronome();
-      const period = 60_000 / Math.max(30, Math.min(240, bpm));
+      // Fino a 10 battiti al minuto: chi studia un passaggio in loop scende molto.
+      const period = 60_000 / Math.max(10, Math.min(240, bpm));
       let beat = 0;
       const tick = () => {
         try {

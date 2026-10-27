@@ -57,7 +57,7 @@ export default {
   "tutto il brano": "whole piece",
   "Tempo": "Tempo",
   "Loop intelligente": "Smart loop",
-  "2 giri puliti → +4 BPM": "2 clean rounds → +4 BPM",
+  "2 giri puliti → +{n} BPM": "2 clean rounds → +{n} BPM",
   "Nota legata: tieni premuto, non ribattere": "Tied note: hold it down, don't replay it",
   "Questa mano tace: pausa": "This hand is silent: rest",
   "Una nota": "One note",
@@ -87,7 +87,6 @@ export default {
   "🎤 Suona per cominciare:": "🎤 Play to start:",
   "Suona:": "Play:",
   "{pct}% giuste": "{pct}% correct",
-  "{notes} passaggi in {secs}s · tempo {rate}%": "{notes} steps in {secs}s · tempo {rate}%",
   "Pulito. Alza il tempo del 10% e rifallo.": "Clean. Raise the tempo by 10% and do it again.",
   "Rifallo allo stesso tempo: la precisione viene prima della velocità.": "Do it again at the same tempo: accuracy comes before speed.",
   "Più veloce": "Faster",
@@ -517,4 +516,6 @@ export default {
   "la coda a mani separate, lentissima": "the coda hands separately, very slowly",
   'Nota precedente': 'Previous note',
   'Nota successiva': 'Next note',
+  'Velocità: {bpm} battiti al minuto ({pct}% del tempo del brano)': "Speed: {bpm} beats per minute ({pct}% of the piece's tempo)",
+  '{notes} passaggi in {secs}s · {bpm} bpm': '{notes} steps in {secs}s · {bpm} bpm',
 } as Record<string, string>;
